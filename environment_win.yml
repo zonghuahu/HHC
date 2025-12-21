@@ -1,0 +1,26 @@
+name: tsp_gpu
+channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - jupyter
+  - notebook
+  - scikit-learn
+  - tqdm
+  - pillow
+  - pyyaml
+  - requests
+  - pip:
+    - docplex
+    - gurobipy
+    - img2pdf
+    - pikepdf
+    - protobuf
+    - tensorboard-logger
