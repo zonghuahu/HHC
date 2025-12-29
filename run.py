@@ -120,6 +120,9 @@ def run(opts):
     elif opts.baseline == 'rollout':
         print("加载 rollout baseline")
         baseline = RolloutBaseline(model, problem, opts)
+    elif opts.baseline == 'POMO':
+        print("加载 POMO baseline")
+        baseline = 
     else:
         # 确保基线类型为空或已知类型
         assert opts.baseline is None, "Unknown baseline: {}".format(opts.baseline)

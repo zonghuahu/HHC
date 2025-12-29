@@ -258,13 +258,16 @@ class GraphAttentionEncoder(nn.Module):
             n_layers,
             node_dim=None,
             normalization='batch',
-            feed_forward_hidden=512
-    ):
+            feed_forward_hidden=512,
+            lambda_dim=None):
         super(GraphAttentionEncoder, self).__init__()
 
         # 输入特征到嵌入的线性层（若 node_dim 非 None）
         self.init_embed = nn.Linear(node_dim, embed_dim) if node_dim is not None else None
 
+        # New: 定义W_lambda线性层（若 lambda_dim 非 None）
+        self.W_lambda = nn.Linear(lambda_dim, embed_dim) if lambda_dim is not None else None
+        
         # 多层注意力层，包含 n_layers 个 MultiHeadAttentionLayer
         self.layers = nn.Sequential(*(
             MultiHeadAttentionLayer(n_heads, embed_dim, feed_forward_hidden, normalization)
