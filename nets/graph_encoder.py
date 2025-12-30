@@ -267,7 +267,7 @@ class GraphAttentionEncoder(nn.Module):
 
         # New: 定义W_lambda线性层（若 lambda_dim 非 None）
         self.W_lambda = nn.Linear(lambda_dim, embed_dim) if lambda_dim is not None else None
-        
+
         # 多层注意力层，包含 n_layers 个 MultiHeadAttentionLayer
         self.layers = nn.Sequential(*(
             MultiHeadAttentionLayer(n_heads, embed_dim, feed_forward_hidden, normalization)
@@ -282,7 +282,8 @@ class GraphAttentionEncoder(nn.Module):
     #   元组：
     #     - 节点嵌入，形状 (batch_size, graph_size, embed_dim)
     #     - 图嵌入（节点嵌入的均值），形状 (batch_size, embed_dim)
-    def forward(self, x, mask=None):
+    
+    def forward(self, x, mask=None, lambda_val=None):
 
         assert mask is None, "TODO mask not yet supported!"  # 当前不支持掩码
 
@@ -291,6 +292,16 @@ class GraphAttentionEncoder(nn.Module):
 
         # 通过多层注意力编码
         h = self.layers(h)
+
+        # NEW: Compute h_lambda ONCE
+        h_lambda = None
+        if self.W_lambda is not None and lambda_val is not None:
+            h_lambda = self.W_lambda(lambda_val)  # Shape: [batch_size, embed_dim]
+
+        # MODIFIED: Pass h_lambda to each layer
+        # Replaces: h = self.layers(h)
+        for layer in self.layers:
+            h = layer(h, h_lambda=h_lambda)
 
         # 返回节点嵌入和图嵌入
         return (
