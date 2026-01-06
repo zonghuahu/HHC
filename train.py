@@ -190,7 +190,8 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
     training_dataset = baseline.wrap_dataset(
         problem.make_dataset(size=opts.graph_size, num_samples=opts.epoch_size, distribution=opts.data_distribution))
     # 这里生成数据是没有带filename参数的
-    training_dataloader = DataLoader(training_dataset, batch_size=opts.batch_size, num_workers=1)
+    # Windows 上使用 num_workers=0 避免多进程问题导致内存泄漏
+    training_dataloader = DataLoader(training_dataset, batch_size=opts.batch_size, num_workers=0, pin_memory=opts.use_cuda)
 
     model.train()  # 切换到训练模式
     set_decode_type(model, "sampling")  # 使用采样解码
@@ -238,6 +239,10 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
     baseline.epoch_callback(model, epoch)  # 基线回调
 
     lr_scheduler.step()  # 更新学习率
+    
+    # 清理 GPU 缓存，防止内存累积导致训练变慢
+    if opts.use_cuda:
+        torch.cuda.empty_cache()
 
 # === 训练 AGH 批次 ===
 def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts):

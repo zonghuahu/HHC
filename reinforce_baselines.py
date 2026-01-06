@@ -264,8 +264,9 @@ class RolloutBaseline(Baseline):
         print("Evaluating baseline on dataset...")
         if self.model.is_agh:
             print("Training baseline model...")
-            output = BaselineDataset(dataset, rollout(self.model, dataset, self.opts))
-            return BaselineDataset(dataset, rollout(self.model, dataset, self.opts))
+            # 修复: 只调用一次 rollout，原代码调用了两次
+            bl_vals = rollout(self.model, dataset, self.opts)
+            return BaselineDataset(dataset, bl_vals)
         else:
             return BaselineDataset(dataset, rollout(self.model, dataset, self.opts).view(-1, 1))
 
