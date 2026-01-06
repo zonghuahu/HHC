@@ -1,4 +1,6 @@
 import os
+# 修复 OpenMP 库冲突问题（Anaconda + PyTorch 常见问题）
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import json
 import pprint as pp
 
