@@ -17,10 +17,7 @@ from reinforce_baselines import NoBaseline, ExponentialBaseline, CriticBaseline,
 from nets.attention_model import AttentionModel
 from nets.pointer_network import PointerNetwork, CriticNetworkLSTM
 from utils import torch_load_cpu, load_problem
-# 释放 GPU 缓存
-torch.cuda.empty_cache()
-# 指定空闲 GPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+# Note: Do NOT hardcode CUDA_VISIBLE_DEVICES here - SLURM sets it automatically
 
 def run(opts):
     # 打印运行参数
