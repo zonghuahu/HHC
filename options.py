@@ -80,7 +80,17 @@ def get_options(args=None):
     opts = parser.parse_args(args)
 
     assert opts.baseline == "rollout", "Only support for 'rollout' baseline now!"
-    opts.use_cuda = torch.cuda.is_available() and not opts.no_cuda
+     # Workaround: some imports (e.g. protobuf) can break torch.cuda.is_available()
+    # Try explicit CUDA initialization first
+    _cuda_available = False
+    if not opts.no_cuda:
+        try:
+            torch.cuda.init()
+            _cuda_available = torch.cuda.device_count() > 0
+        except Exception:
+            _cuda_available = torch.cuda.is_available()
+    opts.use_cuda = _cuda_available
+    print(f"CUDA status: use_cuda={opts.use_cuda}, device_count={torch.cuda.device_count()}")
     opts.run_name = "{}_{}".format(opts.run_name, time.strftime("%Y%m%dT%H%M%S"))
     opts.no_progress_bar = True
     opts.no_tensorboard = True
