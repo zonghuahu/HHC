@@ -37,7 +37,7 @@ def validate(model, dataset, opts):
     return avg_cost
 
 # === Rollout 评估 ===
-def rollout(model, dataset, opts):
+def rollout(model, dataset, opts, lambda_vector=None):
     set_decode_type(model, "greedy")
     model.eval()
 
@@ -50,9 +50,16 @@ def rollout(model, dataset, opts):
             bat_tw_right = bat['departure']
             need = bat['need']
 
+            # === WE-Add: 验证/基线 λ 向量 ===
+            batch_size_eval = bat['loc'].size(0)
+            if lambda_vector is not None:
+                # Use provided lambda_vector (e.g., during training baseline eval)
+                lambda_vector_eval = lambda_vector
+            else:
+                # Default to balanced weights for validation
+                lambda_vector_eval = torch.tensor([[0.5, 0.5]], dtype=torch.float, device=opts.device).expand(batch_size_eval, -1)
+
             for f in model.fleet_info['order']:
-                # print(f"fleet {f}")
-                # 使用 type_as 保持与 bat['loc'] 同设备
                 next_duration = torch.tensor(model.fleet_info['next_duration'][model.fleet_info['precedence'][f]]) \
                     .repeat(bat['loc'].size(0), 1).type_as(bat['loc'])
 
@@ -66,28 +73,26 @@ def rollout(model, dataset, opts):
                     .repeat(bat['loc'].size(0), 1).type_as(bat['loc'])
 
                 if f == 1:
-                    mask = (need == 1) | (need == 9)  # 1单 + 1,6组合
+                    mask = (need == 1) | (need == 9)
                 elif f == 2:
-                    mask = (need == 2) | (need == 7)  # 2单 + 2,3组合
+                    mask = (need == 2) | (need == 7)
                 elif f == 3:
-                    mask = (need == 3) | (need == 7)  # 3单 + 2,3组合 #
+                    mask = (need == 3) | (need == 7)
                 elif f == 4:
-                    mask = (need == 4) | (need == 8)  # 4单 + 4,5组合
+                    mask = (need == 4) | (need == 8)
                 elif f == 5:
-                    mask = (need == 5) | (need == 8)  # 5单 + 4,5组合 #
+                    mask = (need == 5) | (need == 8)
                 elif f == 6:
-                    mask = (need == 6) | (need == 9)  # 6单 + 1,6组合 ##
+                    mask = (need == 6) | (need == 9)
                 else:
-                    mask = (need == f)  # 其他预留
+                    mask = (need == f)
 
-                # 滤掉登机口节点
                 tw_right_filtered = tw_right.clone()
                 tw_right_filtered[:, 1:] = tw_right[:, 1:] * mask.type_as(tw_right).float()
 
                 tw_left_filtered = tw_left.clone()
                 tw_left_filtered[:, 1:] = tw_left[:, 1:] * mask.type_as(tw_left).float()
 
-                # need掩码
                 need_filtered = need.clone()
                 need_filtered = need_filtered * mask.type_as(need).float()
 
@@ -105,32 +110,18 @@ def rollout(model, dataset, opts):
                     model.pre_tw = None
 
                 with torch.no_grad():
-                    # print(f"fleet {f}")
-                    fleet_cost, _, serve_time = model(move_to(fleet_bat, opts.device))
+                    # WE-Add: 传入固定 lambda_vector
+                    fleet_cost, _, serve_time, _, _ = model(
+                        move_to(fleet_bat, opts.device),
+                        lambda_vector=lambda_vector_eval
+                    )
                 bat_cost.append(fleet_cost.data.cpu().view(-1, 1))
 
-                # 这个是在double service中根据优先级更新bat_tw_left的，暂时不用
-                # # 获取下一个阶段的索引
-                # next_stage = model.fleet_info['precedence'][f] + 1
-                # # 当前阶段实际服务的节点 mask（跳过 depot，即从第 1 列开始）
-                # real_mask = mask.to(opts.device) # [batch_size, graph_size]
-                # # 旧的 tw_left 值
-                # prev_tw_left = bat_tw_left[next_stage]  # [batch_size, graph_size]
-                # # 当前 serve_time（从第 1 列开始）
-                # cur_serve_time = serve_time[:, 1:]  # [batch_size, graph_size]
-                # print(f"cur_serve_time: {cur_serve_time[:5]}")
-                # # 只更新被服务节点的时间窗
-                # updated_tw_left = torch.where(real_mask, torch.max(prev_tw_left, cur_serve_time), prev_tw_left)
-                # # 覆盖更新
-                # bat_tw_left[next_stage] = updated_tw_left
-
                 next_stage = model.fleet_info['precedence'][f] + 1
-                mask = mask.to(opts.device)  # [batch_size, graph_size]
+                mask = mask.to(opts.device)
                 if f == 1:
-                    # f=1 时的特殊逻辑：不加10
                     bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
                 else:
-                    # 其他情况的原有逻辑：加10
                     bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
 
             bat_cost = torch.cat(bat_cost, 1)
@@ -246,7 +237,7 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
 
 # === 训练 AGH 批次 ===
 def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts):
-    """训练 AGH 批次，使用 REINFORCE 优化多车队路径。
+    """训练 AGH 批次，使用 REINFORCE 优化多车队路径（WE-Add 多目标）。
     - model: AttentionModel 实例
     - optimizer: 优化器
     - baseline: 基线对象
@@ -255,47 +246,49 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
     - tb_logger: TensorBoard 日志记录器
     - opts: 配置选项
     """
-    x, bl_val = baseline.unwrap_batch(batch)  # 解包数据和基线值
-    # print(x.keys(),x)
-    assert bl_val is not None
+    x, bl_val = baseline.unwrap_batch(batch)  # 解包数据和基线值（bl_val仅用于非AGH）
     x = move_to(x, opts.device)  # 移动到设备
-    bl_val = move_to(bl_val, opts.device)
 
     set_decode_type(model, "sampling")  # 使用采样解码
+
+    # === WE-Add: 采样随机权重向量 λ ===
+    batch_size = x['loc'].size(0)
+    lambda_1 = torch.rand(batch_size, 1, device=opts.device)  # λ₁ ~ Uniform(0, 1)
+    lambda_2 = 1.0 - lambda_1  # λ₂ = 1 - λ₁
+    lambda_vector = torch.cat([lambda_1, lambda_2], dim=1)  # [batch_size, 2]
+
+    # === STEP 1: Policy forward pass ===
     # 初始化时间窗口
-    bat_tw_left = x['arrival'].repeat(len(model.fleet_info['next_duration']) + 1, 1, 1) # 全局时间窗口左边界
-    bat_tw_right = x['departure'] # 全局时间窗口右边界
+    bat_tw_left = x['arrival'].repeat(len(model.fleet_info['next_duration']) + 1, 1, 1)  # 全局时间窗口左边界
+    bat_tw_right = x['departure']  # 全局时间窗口右边界
     need = x['need']
     fleet_cost_together, log_likelihood_together, fleet_cost_list, log_likelihood_list = None, None, [], []
 
     for f in model.fleet_info['order']:  # 按车队优先级
-        # print(f"train_batch_agh下 车队: {f}")
         # 构造车队输入
-        # print(model.fleet_info['precedence'][f])
         next_duration = torch.tensor(model.fleet_info['next_duration'][model.fleet_info['precedence'][f]],
                                     device=x['type'].device).repeat(x['loc'].size(0), 1)
         tw_right = bat_tw_right - torch.gather(next_duration, 1, x['type'])
-        # torch.gather(next_duration, 1, x['type'])，从 next_duration 中沿 dim=1（类型维度）根据 x['type'] 提取值
-        tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)# 添加车库时间窗
+        tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
 
-        tw_left = bat_tw_left[model.fleet_info['precedence'][f]]# 单个车队时间窗左边界=全局时间窗口左边界
-        tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)# 添加车队时间窗
+        tw_left = bat_tw_left[model.fleet_info['precedence'][f]]
+        tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
         duration = torch.tensor(model.fleet_info['duration'][f], device=x['type'].device).repeat(x['loc'].size(0), 1)
 
         if f == 1:
-            mask = (need == 1) | (need == 9)  # 1单 + 1,6组合
+            mask = (need == 1) | (need == 9)
         elif f == 2:
-            mask = (need == 2) | (need == 7)  # 2单 + 2,3组合
+            mask = (need == 2) | (need == 7)
         elif f == 3:
-            mask = (need == 3) | (need == 7)  # 3单 + 2,3组合#
+            mask = (need == 3) | (need == 7)
         elif f == 4:
-            mask = (need == 4) | (need == 8)  # 4单 + 4,5组合
+            mask = (need == 4) | (need == 8)
         elif f == 5:
-            mask = (need == 5) | (need == 8)  # 5单 + 4,5组合#
+            mask = (need == 5) | (need == 8)
         elif f == 6:
-            mask = (need == 6) | (need == 9)  # 6单 + 1,6组合#
+            mask = (need == 6) | (need == 9)
         else:
-            mask = (need == f)  # 其他预留
+            mask = (need == f)
 
         # 滤掉登机口节点
         tw_right_filtered = tw_right.clone()
@@ -307,7 +300,6 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
         # need掩码
         need_filtered = need.clone()
         need_filtered = need_filtered * mask.type_as(need).float()
-
 
         fleet_bat = {'loc': x['loc'],
                      'distance': model.distance.expand(x['loc'].size(0), len(model.distance)),
@@ -321,9 +313,11 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
         if model.rnn_time:
             model.pre_tw = None  # 重置 RNN 隐藏状态
 
-        # 前向传播
-        # print(f"fleet {f}")
-        fleet_cost, log_likelihood, serve_time = model(move_to(fleet_bat, opts.device))# 返回的是车队距离成本、对数似然、车队服务时间
+        # 前向传播（WE-Add: 传入 lambda_vector）
+        fleet_cost, log_likelihood, serve_time, f1, f2 = model(
+            move_to(fleet_bat, opts.device),
+            lambda_vector=lambda_vector
+        )
 
         # 收集成本和对数似然
         fleet_cost_list.append(fleet_cost)
@@ -336,18 +330,21 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
             log_likelihood_together = log_likelihood_together + log_likelihood
 
         next_stage = model.fleet_info['precedence'][f] + 1
-        mask = mask.to(opts.device)  # [batch_size, graph_size]
+        mask = mask.to(opts.device)
         if f == 1:
-            # f=1 时的特殊逻辑：不加10
             bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
         else:
-            # 其他情况的原有逻辑：加10
             bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
 
-    # 计算 REINFORCE 损失
-    loss = ((fleet_cost_list[0] - bl_val[:, 0]) * log_likelihood_list[0]).mean()
+    # === STEP 2: Baseline with SAME λ ===
+    # Recompute baseline costs using the SAME lambda_vector
+    # This ensures advantage = cost(λ) - baseline(λ) is valid
+    bl_cost_list = baseline.eval_agh(x, model.fleet_info, model.distance, lambda_vector, opts)
+
+    # === STEP 3: REINFORCE loss ===
+    loss = ((fleet_cost_list[0] - bl_cost_list[0]) * log_likelihood_list[0]).mean()
     for i in range(1, len(fleet_cost_list)):
-        loss += ((fleet_cost_list[i] - bl_val[:, i]) * log_likelihood_list[i]).mean()
+        loss += ((fleet_cost_list[i] - bl_cost_list[i]) * log_likelihood_list[i]).mean()
     loss = loss / len(fleet_cost_list)  # 平均损失
 
     optimizer.zero_grad()
