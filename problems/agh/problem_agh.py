@@ -61,11 +61,12 @@ class AGH(object):
             # 服务开始时间 = max(到达时间, tw_left)
             service_start_time = torch.max(arrival_time, dataset['tw_left'][ids, pi[:, i:i+1]])
             
-            # 计算等待时间: max(0, service_start_time - tw_right)
-            # 只对非车库节点计算 (pi != 0)
+            # 计算患者等待时间: max(0, service_start_time - tw_left)
+            # 患者从最早可服务时间开始等待到实际服务开始
             is_not_depot = (pi[:, i:i+1] != 0).float()
+            tw_left_node = dataset['tw_left'][ids, pi[:, i:i+1]]
             tw_right_node = dataset['tw_right'][ids, pi[:, i:i+1]]
-            waiting_i = torch.clamp(service_start_time - tw_right_node, min=0) * is_not_depot
+            waiting_i = torch.clamp(service_start_time - tw_left_node, min=0) * is_not_depot
             total_waiting = total_waiting + waiting_i.squeeze(-1)
             
             # 更新当前时间：service_start_time + 服务时长
