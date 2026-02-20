@@ -290,6 +290,94 @@ class RolloutBaseline(Baseline):
             v, _ = self.model(x)  # 贪婪解码成本
         return v, 0  # 无基线损失
 
+    def eval_agh(self, x, fleet_info, distance, lambda_vector, opts):
+        """
+        使用基线模型计算 AGH 多车队成本（使用与策略相同的 λ）。
+        
+        Args:
+            x: 输入数据（已在设备上）
+            fleet_info: 车队信息字典
+            distance: 距离张量
+            lambda_vector: [batch_size, 2] 权重向量（与策略相同的 λ）
+            opts: 配置选项
+        
+        Returns:
+            bl_cost_list: 每个车队的基线成本列表
+        """
+        from nets.attention_model import set_decode_type
+        from utils import move_to
+        
+        set_decode_type(self.model, "greedy")
+        self.model.eval()
+        
+        bat_tw_left = x['arrival'].repeat(len(fleet_info['next_duration']) + 1, 1, 1)
+        bat_tw_right = x['departure']
+        need = x['need']
+        bl_cost_list = []
+        
+        for f in fleet_info['order']:
+            next_duration = torch.tensor(fleet_info['next_duration'][fleet_info['precedence'][f]],
+                                        device=x['type'].device).repeat(x['loc'].size(0), 1)
+            tw_right = bat_tw_right - torch.gather(next_duration, 1, x['type'])
+            tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
+            
+            tw_left = bat_tw_left[fleet_info['precedence'][f]]
+            tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
+            duration = torch.tensor(fleet_info['duration'][f], device=x['type'].device).repeat(x['loc'].size(0), 1)
+            
+            if f == 1:
+                mask = (need == 1) | (need == 9)
+            elif f == 2:
+                mask = (need == 2) | (need == 7)
+            elif f == 3:
+                mask = (need == 3) | (need == 7)
+            elif f == 4:
+                mask = (need == 4) | (need == 8)
+            elif f == 5:
+                mask = (need == 5) | (need == 8)
+            elif f == 6:
+                mask = (need == 6) | (need == 9)
+            else:
+                mask = (need == f)
+            
+            tw_right_filtered = tw_right.clone()
+            tw_right_filtered[:, 1:] = tw_right[:, 1:] * mask.float()
+            
+            tw_left_filtered = tw_left.clone()
+            tw_left_filtered[:, 1:] = tw_left[:, 1:] * mask.float()
+            
+            need_filtered = need.clone()
+            need_filtered = need_filtered * mask.type_as(need).float()
+            
+            fleet_bat = {
+                'loc': x['loc'],
+                'distance': distance.expand(x['loc'].size(0), len(distance)),
+                'duration': torch.gather(duration, 1, x['type']),
+                'tw_right': tw_right_filtered,
+                'tw_left': tw_left_filtered,
+                'fleet': torch.full((x['loc'].size(0), 1), f - 1),
+                'need': need_filtered,
+            }
+            
+            if hasattr(self.model, 'rnn_time') and self.model.rnn_time:
+                self.model.pre_tw = None
+            
+            with torch.no_grad():
+                fleet_cost, _, serve_time, _, _ = self.model(
+                    move_to(fleet_bat, opts.device),
+                    lambda_vector=lambda_vector
+                )
+            bl_cost_list.append(fleet_cost.detach())
+            
+            next_stage = fleet_info['precedence'][f] + 1
+            mask = mask.to(opts.device)
+            if f == 1:
+                bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
+            else:
+                bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
+        
+        return bl_cost_list
+
     def epoch_callback(self, model, epoch):
         """挑战基线模型，若新模型更优则更新。
         - model: 当前模型
