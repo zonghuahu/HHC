@@ -290,18 +290,15 @@ class GraphAttentionEncoder(nn.Module):
         # 若有初始嵌入层，将输入特征映射到嵌入空间
         h = self.init_embed(x.view(-1, x.size(-1))).view(*x.size()[:2], -1) if self.init_embed is not None else x
 
+        # === WE-Add: 权重嵌入加法 ===
+        # 将 lambda 向量（目标权重）映射到嵌入空间，加到所有节点的初始嵌入上
+        # 这使模型能根据不同的 λ 权重向量生成不同的解
+        if self.W_lambda is not None and lambda_val is not None:
+            h_lambda = self.W_lambda(lambda_val)  # [batch_size, embed_dim]
+            h = h + h_lambda.unsqueeze(1)  # broadcast 到所有节点: [batch_size, graph_size, embed_dim]
+
         # 通过多层注意力编码
         h = self.layers(h)
-
-        # NEW: Compute h_lambda ONCE
-        h_lambda = None
-        if self.W_lambda is not None and lambda_val is not None:
-            h_lambda = self.W_lambda(lambda_val)  # Shape: [batch_size, embed_dim]
-
-        # MODIFIED: Pass h_lambda to each layer
-        # Replaces: h = self.layers(h)
-        for layer in self.layers:
-            h = layer(h, h_lambda=h_lambda)
 
         # 返回节点嵌入和图嵌入
         return (

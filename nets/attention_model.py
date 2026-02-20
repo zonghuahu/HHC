@@ -156,11 +156,13 @@ class AttentionModel(nn.Module):
         self.init_embed = nn.Linear(node_dim, embedding_dim)  # 特征嵌入
 
         # === 编码器 ===
+        # WE-Add: 对 AGH 问题传入 lambda_dim=2（两个目标：距离和等待时间）
         self.embedder = GraphAttentionEncoder(
             n_heads=n_heads,
             embed_dim=embedding_dim,
             n_layers=self.n_encode_layers,
-            normalization=normalization
+            normalization=normalization,
+            lambda_dim=2 if self.is_agh else None  # 多目标权重嵌入维度
         )
 
         # === 时间窗口嵌入（AGH 特有） ===
@@ -186,7 +188,7 @@ class AttentionModel(nn.Module):
         if temp is not None:
             self.temp = temp
 
-    def forward(self, input, return_pi=False):
+    def forward(self, input, return_pi=False, lambda_vector=None):
         """
         前向传播：生成路径、成本和对数似然。
         - input: 字典，包含以下字段：
@@ -197,31 +199,49 @@ class AttentionModel(nn.Module):
             'tw_left': 时间窗口边界 [batch_size, graph_size+1]
             'fleet': 车队索引 [batch_size, 1]
         - return_pi: 是否返回路径序列（因 DataParallel 可能不兼容）
+        - lambda_vector: [batch_size, 2] 多目标权重向量 (WE-Add)
+            lambda_vector[:, 0] = λ₁ (距离权重)
+            lambda_vector[:, 1] = λ₂ (等待时间权重)
         - 输出:
-            - AGH: (cost, ll, serve_time, [pi]) 或 (cost, ll, serve_time)
+            - AGH: (cost, ll, serve_time, f1, f2, [pi])
             - 其他: (cost, ll, [pi])
         """
         if self.checkpoint_encoder and self.training:
             # 使用检查点减少内存占用
             embeddings, _ = checkpoint(self.embedder, self._init_embed(input))
         else:
-            # 正常编码：生成节点嵌入
-            embeddings, _ = self.embedder(self._init_embed(input))  # [batch_size, graph_size+1, embedding_dim]，embeddings包含位置和时间信息
+            # 正常编码：生成节点嵌入，传入 lambda_vector 用于 WE-Add
+            embeddings, _ = self.embedder(
+                self._init_embed(input),
+                lambda_val=lambda_vector
+            )  # [batch_size, graph_size+1, embedding_dim]
 
         # 解码：生成对数概率、路径和服务时间
-        _log_p, pi, serve_time = self._inner(input, embeddings)# pi是路径（50个节点）
-        # print(f"路径：{pi[:5]}")
-        # 计算成本和掩码
-        cost, mask = self.problem.get_costs(input, pi)
-
-        # 计算对数似然
-        ll = self._calc_log_likelihood(_log_p, pi, mask)
+        _log_p, pi, serve_time = self._inner(input, embeddings)  # pi是路径（50个节点）
 
         if self.is_agh:
-            if return_pi:
-                return cost, ll, serve_time, pi
+            # === 多目标成本计算 ===
+            # 获取两个目标分量：f1=总距离, f2=总等待时间
+            f1, f2, mask = self.problem.get_costs(input, pi, return_components=True)
+
+            if lambda_vector is not None:
+                # 标量化成本: cost = λ₁·f₁ + λ₂·f₂
+                cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
             else:
-                return cost, ll, serve_time
+                # 无 lambda 时，退回单目标（仅距离）
+                cost = f1
+
+            # 计算对数似然
+            ll = self._calc_log_likelihood(_log_p, pi, mask)
+
+            if return_pi:
+                return cost, ll, serve_time, f1, f2, pi
+            else:
+                return cost, ll, serve_time, f1, f2
+
+        # 非 AGH 问题：保持原有逻辑
+        cost, mask = self.problem.get_costs(input, pi)
+        ll = self._calc_log_likelihood(_log_p, pi, mask)
 
         if return_pi:
             return cost, ll, pi
