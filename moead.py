@@ -41,6 +41,39 @@ FLEET_NEEDS = {
     6: [6, 9],
 }
 
+# Single-need types for fleets with combo constraints
+# Fleet 3 serves need=3 (single) + need=7 (combo)
+# Fleet 5 serves need=5 (single) + need=8 (combo)
+# Fleet 6 serves need=6 (single) + need=9 (combo)
+SINGLE_NEED = {3: 3, 5: 5, 6: 6}
+LATE_TOLERANCE = {3: 30.0, 5: 30.0, 6: 0.0}  # minutes allowed late
+
+
+def is_visit_feasible(svc_start, dur_p, tw_left_p, tw_right_p,
+                      fleet_id, patient_need):
+    """
+    Check if visiting a patient is feasible, including combo-need constraints.
+
+    Constraints:
+    1. Basic: svc_start + duration <= tw_right  (must finish within window)
+    2. Fleet 3/5 single-need: can't arrive more than 30 min after tw_left
+    3. Fleet 6 single-need: can't arrive after tw_left at all
+    """
+    # C1: Basic time window
+    if svc_start + dur_p > tw_right_p + 1e-5:
+        return False
+
+    # C2: Combo-fleet single-need arrival constraint
+    if fleet_id in SINGLE_NEED:
+        single_need_val = SINGLE_NEED[fleet_id]
+        if patient_need == single_need_val:
+            tolerance = LATE_TOLERANCE[fleet_id]
+            if svc_start > tw_left_p + tolerance + 1e-5:
+                return False
+
+    return True
+
+
 # ============================================================================
 # Data Loading
 # ============================================================================
@@ -167,7 +200,8 @@ def simulate_fleet_route(route, instance, dist_matrix, fleet_info, fleet_id,
         svc_start = max(arr_time, tw_left_f[p])
         dur_p = fleet_dur[type_[p]]
 
-        if svc_start + dur_p > tw_right_f[p] + 1e-5:
+        if not is_visit_feasible(svc_start, dur_p, tw_left_f[p],
+                                tw_right_f[p], fleet_id, instance['need'][p]):
             # Cannot serve from current position; return to depot and retry
             if cur_loc != 0:
                 f1 += dist_matrix[cur_loc, 0]  # return to depot distance
@@ -300,7 +334,8 @@ def construct_nn_solution(instance, dist_matrix, fleet_info):
                 svc_start = max(arr_time, tw_left_f[p])
                 dur_p = fleet_dur[type_[p]]
 
-                if svc_start + dur_p <= tw_right_f[p] + 1e-5:
+                if is_visit_feasible(svc_start, dur_p, tw_left_f[p],
+                                     tw_right_f[p], f, need[p]):
                     if d < best_dist:
                         best_dist = d
                         best_p = p
@@ -398,7 +433,8 @@ def construct_nn_solution_sorted(instance, dist_matrix, fleet_info):
                 svc_start = max(arr_time, tw_left_f[p])
                 dur_p = fleet_dur[type_[p]]
 
-                if svc_start + dur_p <= tw_right_f[p] + 1e-5:
+                if is_visit_feasible(svc_start, dur_p, tw_left_f[p],
+                                     tw_right_f[p], f, need[p]):
                     # Score: prioritize by tw_left, break ties by distance
                     score = tw_left_f[p] + d * 0.01
                     if score < best_score:
@@ -479,7 +515,8 @@ def construct_random_solution(instance, dist_matrix, fleet_info):
             svc_start = max(arr_time, tw_left_f[p])
             dur_p = fleet_dur[type_[p]]
 
-            if svc_start + dur_p <= tw_right_f[p] + 1e-5:
+            if is_visit_feasible(svc_start, dur_p, tw_left_f[p],
+                                 tw_right_f[p], f, need[p]):
                 route.append(p)
                 unvisited.pop(0)
                 serve_times[p] = svc_start
