@@ -218,14 +218,10 @@ def main():
     print(f"Dataset: {len(dataset)} instances, graph_size={args.graph_size}")
 
     # === 生成权重向量并推理 ===
-    weight_vectors = []
-    for i in range(args.n_weights):
-        lambda_1 = i / (args.n_weights - 1)  # 0.0, 0.1, ..., 1.0
-        lambda_2 = 1 - lambda_1
-        weight_vectors.append([lambda_1, lambda_2])
+    weight_vectors = [[0.0, 1.0], [0.3, 0.7], [0.5, 0.5], [0.7, 0.3], [1.0, 0.0]]
 
     results = []
-    print(f"\nRunning inference with {args.n_weights} weight vectors...")
+    print(f"\nRunning inference with {len(weight_vectors)} weight vectors...")
     for lambda_vec in tqdm(weight_vectors, desc="Weight vectors"):
         f1_vals, f2_vals = run_inference_with_lambda(model, dataset, lambda_vec, device, args.batch_size)
         result = {
