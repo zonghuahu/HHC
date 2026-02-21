@@ -111,7 +111,7 @@ def get_routes_for_lambda(model, dataset, lambda_vec, device, instance_idx=0):
         }
         
         with torch.no_grad():
-            cost, _, serve_time, f1, f2 = model(
+            cost, _, serve_time, f1, f2, pi = model(
                 move_to(fleet_bat, device),
                 lambda_vector=lambda_vector,
                 return_pi=True
