@@ -41,32 +41,33 @@ FLEET_NEEDS = {
     6: [6, 9],
 }
 
-# Single-need types for fleets with combo constraints
-# Fleet 3 serves need=3 (single) + need=7 (combo)
-# Fleet 5 serves need=5 (single) + need=8 (combo)
-# Fleet 6 serves need=6 (single) + need=9 (combo)
-SINGLE_NEED = {3: 3, 5: 5, 6: 6}
-LATE_TOLERANCE = {3: 30.0, 5: 30.0, 6: 0.0}  # minutes allowed late
+# Combo-need types: the late-arrival tolerance applies to COMBO patients,
+# matching the DRL masking logic in state_agh.py.
+# Fleet 3 serves need=3 (single) + need=7 (combo) → constraint on need=7
+# Fleet 5 serves need=5 (single) + need=8 (combo) → constraint on need=8
+# Fleet 6 serves need=6 (single) + need=9 (combo) → constraint on need=9
+COMBO_NEED = {3: 7, 5: 8, 6: 9}
+LATE_TOLERANCE = {3: 30.0, 5: 30.0, 6: 0.0}
 
 
 def is_visit_feasible(svc_start, dur_p, tw_left_p, tw_right_p,
                       fleet_id, patient_need):
     """
-    Check if visiting a patient is feasible, including combo-need constraints.
+    Check if visiting a patient is feasible.
 
     Constraints:
     1. Basic: svc_start + duration <= tw_right  (must finish within window)
-    2. Fleet 3/5 single-need: can't arrive more than 30 min after tw_left
-    3. Fleet 6 single-need: can't arrive after tw_left at all
+    2. Fleet 3/5 combo-need (7/8): can't start more than 30 min after tw_left
+    3. Fleet 6 combo-need (9): can't start after tw_left at all (0 tolerance)
     """
     # C1: Basic time window
     if svc_start + dur_p > tw_right_p + 1e-5:
         return False
 
-    # C2: Combo-fleet single-need arrival constraint
-    if fleet_id in SINGLE_NEED:
-        single_need_val = SINGLE_NEED[fleet_id]
-        if patient_need == single_need_val:
+    # C2: Combo-patient late-arrival constraint (matches DRL state_agh.py)
+    if fleet_id in COMBO_NEED:
+        combo_need_val = COMBO_NEED[fleet_id]
+        if patient_need == combo_need_val:
             tolerance = LATE_TOLERANCE[fleet_id]
             if svc_start > tw_left_p + tolerance + 1e-5:
                 return False
@@ -720,14 +721,20 @@ def crossover_solutions(parent1, parent2, instance):
 
 
 def moead(instances, dist_matrix, fleet_info, n_weights=11,
-          n_gen=500, T=3, mutation_rate=0.3, verbose=True):
+          weight_vectors=None, n_gen=500, T=3, mutation_rate=0.3, verbose=True):
     """
     MOEA/D main algorithm.
 
     For each instance, evolves {n_weights} solutions (one per weight vector)
     using Tchebycheff decomposition. Collects results across all instances.
+
+    If weight_vectors is provided, it overrides n_weights with custom λ set.
     """
-    weights = generate_weight_vectors(n_weights)
+    if weight_vectors is not None:
+        weights = [tuple(w) for w in weight_vectors]
+        n_weights = len(weights)
+    else:
+        weights = generate_weight_vectors(n_weights)
     neighborhoods = compute_neighborhoods(weights, T)
 
     if verbose:
@@ -888,12 +895,15 @@ def main():
         description='MOEA/D baseline for HHCRSP')
     parser.add_argument('--graph_size', type=int, default=50,
                         help='Problem size (50 or 100)')
-    parser.add_argument('--n_instances', type=int, default=100,
-                        help='Number of test instances')
+    parser.add_argument('--n_instances', type=int, default=1000,
+                        help='Number of test instances (default: 1000)')
     parser.add_argument('--filename', type=str, default=None,
-                        help='Load instances from .pkl file')
+                        help='Load instances from .pkl file (use shared_test_*.pkl for fair comparison)')
     parser.add_argument('--n_weights', type=int, default=11,
-                        help='Number of weight vectors (Pareto points)')
+                        help='Number of uniformly spaced weight vectors (ignored if --weight_list set)')
+    parser.add_argument('--weight_list', type=str, default=None,
+                        help='Custom weight vectors as JSON, e.g. '
+                             '"[[0.0,1.0],[0.3,0.7],[0.5,0.5],[0.7,0.3],[1.0,0.0]]"')
     parser.add_argument('--n_gen', type=int, default=500,
                         help='Number of generations')
     parser.add_argument('--T', type=int, default=3,
@@ -929,10 +939,17 @@ def main():
         instances = generate_instances(opts.n_instances, opts.graph_size,
                                        arrival_prob, seed=opts.seed)
 
+    custom_weights = None
+    if opts.weight_list:
+        import json
+        custom_weights = json.loads(opts.weight_list)
+        print(f"Using custom weight vectors: {custom_weights}")
+
     start_time = time.time()
     pareto_results, weights = moead(
         instances, dist_matrix, fleet_info,
         n_weights=opts.n_weights,
+        weight_vectors=custom_weights,
         n_gen=opts.n_gen,
         T=opts.T,
         mutation_rate=opts.mutation_rate,
