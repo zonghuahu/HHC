@@ -81,7 +81,6 @@ def get_options(args=None):
 
     assert opts.baseline == "rollout", "Only support for 'rollout' baseline now!"
      # Workaround: some imports (e.g. protobuf) can break torch.cuda.is_available()
-    # Try explicit CUDA initialization first
     _cuda_available = False
     if not opts.no_cuda:
         try:

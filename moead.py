@@ -23,10 +23,48 @@ import pickle
 import argparse
 import numpy as np
 
+
+def compute_hypervolume(pareto_results, ref_point=None):
+    """
+    Compute hypervolume indicator for a Pareto front.
+    Uses the WFG/sweepline algorithm (O(n log n)) for 2D.
+
+    pareto_results: list of dicts with 'f1_mean', 'f2_mean'
+    ref_point: [ref_f1, ref_f2] reference (nadir) point.
+               Defaults to 10% above the worst observed values.
+    """
+    points = np.array([[r['f1_mean'], r['f2_mean']] for r in pareto_results])
+
+    if ref_point is None:
+        ref_point = [np.max(points[:, 0]) * 1.1, np.max(points[:, 1]) * 1.1]
+
+    # Filter dominated points: Pareto front only
+    ref = np.array(ref_point)
+
+    # Sort by f1 ascending
+    idx = np.argsort(points[:, 0])
+    pts = points[idx]
+
+    # Compute 2D hypervolume by sweepline
+    hv = 0.0
+    prev_f1 = ref[0]
+    # Traverse right-to-left (decreasing f1) so each strip is defined
+    # by [pts[i, f1], prev_f1] x [pts[i, f2], ref_f2]
+    for i in range(len(pts) - 1, -1, -1):
+        f1, f2 = pts[i]
+        if f1 >= ref[0] or f2 >= ref[1]:
+            continue
+        width = prev_f1 - f1
+        height = ref[1] - f2
+        hv += width * height
+        prev_f1 = f1
+
+    return hv, ref_point
+
 # ============================================================================
 # Constants
 # ============================================================================
-NODE_SIZE = 92        # 91 patient locations + 1 depot
+NODE_SIZE = 101       # 100 patient locations + 1 depot
 SPEED = 80.0          # distance_units / minute
 DEPOT_TW_RIGHT = 1441 # effectively unlimited
 INIT_FREE_TIME = -60  # vehicle available 60 min before day starts
@@ -41,32 +79,33 @@ FLEET_NEEDS = {
     6: [6, 9],
 }
 
-# Single-need types for fleets with combo constraints
-# Fleet 3 serves need=3 (single) + need=7 (combo)
-# Fleet 5 serves need=5 (single) + need=8 (combo)
-# Fleet 6 serves need=6 (single) + need=9 (combo)
-SINGLE_NEED = {3: 3, 5: 5, 6: 6}
-LATE_TOLERANCE = {3: 30.0, 5: 30.0, 6: 0.0}  # minutes allowed late
+# Combo-need types: the late-arrival tolerance applies to COMBO patients,
+# matching the DRL masking logic in state_agh.py.
+# Fleet 3 serves need=3 (single) + need=7 (combo) → constraint on need=7
+# Fleet 5 serves need=5 (single) + need=8 (combo) → constraint on need=8
+# Fleet 6 serves need=6 (single) + need=9 (combo) → constraint on need=9
+COMBO_NEED = {3: 7, 5: 8, 6: 9}
+LATE_TOLERANCE = {3: 30.0, 5: 30.0, 6: 0.0}
 
 
 def is_visit_feasible(svc_start, dur_p, tw_left_p, tw_right_p,
                       fleet_id, patient_need):
     """
-    Check if visiting a patient is feasible, including combo-need constraints.
+    Check if visiting a patient is feasible.
 
     Constraints:
     1. Basic: svc_start + duration <= tw_right  (must finish within window)
-    2. Fleet 3/5 single-need: can't arrive more than 30 min after tw_left
-    3. Fleet 6 single-need: can't arrive after tw_left at all
+    2. Fleet 3/5 combo-need (7/8): can't start more than 30 min after tw_left
+    3. Fleet 6 combo-need (9): can't start after tw_left at all (0 tolerance)
     """
     # C1: Basic time window
     if svc_start + dur_p > tw_right_p + 1e-5:
         return False
 
-    # C2: Combo-fleet single-need arrival constraint
-    if fleet_id in SINGLE_NEED:
-        single_need_val = SINGLE_NEED[fleet_id]
-        if patient_need == single_need_val:
+    # C2: Combo-patient late-arrival constraint (matches DRL state_agh.py)
+    if fleet_id in COMBO_NEED:
+        combo_need_val = COMBO_NEED[fleet_id]
+        if patient_need == combo_need_val:
             tolerance = LATE_TOLERANCE[fleet_id]
             if svc_start > tw_left_p + tolerance + 1e-5:
                 return False
@@ -105,7 +144,7 @@ def generate_instances(n_instances, graph_size, arrival_prob, seed=None):
 
     n_hour = np.arange(10, 20)
     n_min = 60
-    n_gate = 91
+    n_gate = 100
 
     instances = []
     for _ in range(n_instances):
@@ -191,6 +230,14 @@ def simulate_fleet_route(route, instance, dist_matrix, fleet_info, fleet_id,
     serve_times = {}
 
     for p in route:
+        if p == -1:
+            # Depot return sentinel (from force-add in construct_random_solution)
+            if cur_loc != 0:
+                f1 += dist_matrix[cur_loc, 0]
+            cur_time = INIT_FREE_TIME
+            cur_loc = 0
+            continue
+
         p_loc = loc[p]
 
         # Check if we can reach this patient from current position
@@ -448,7 +495,7 @@ def construct_nn_solution_sorted(instance, dist_matrix, fleet_info):
                     retries += 1
                     continue
                 else:
-                    # Force the earliest tw_left patient
+                    # Force the earliest tw_left patient (we're at depot, so no depot return needed)
                     best_p = unvisited[0]
                     retries += 1
 
@@ -534,10 +581,16 @@ def construct_random_solution(instance, dist_matrix, fleet_info):
                     unvisited.append(unvisited.pop(0))
                     retries += 1
 
-        # Force-add any remaining
+        # Force-add any remaining (with depot returns to avoid artificially low f1)
+        # Without depot returns, infeasible routes would skip distance and pollute Pareto front.
+        # Use -1 as depot sentinel so simulate_fleet_route adds return distance.
         for p in unvisited:
-            route.append(p)
             p_loc = loc[p]
+            if cur_loc != 0:
+                route.append(-1)  # depot return sentinel
+                cur_time = INIT_FREE_TIME
+                cur_loc = 0
+            route.append(p)
             travel_time = dist_matrix[cur_loc, p_loc] / SPEED
             arr_time = cur_time + travel_time
             svc_start = max(arr_time, tw_left_f[p])
@@ -630,12 +683,18 @@ def mutate_reverse_segment(route):
 
 
 def route_distance(route, loc, dist_matrix):
-    """Calculate total distance of a single fleet route (depot→patients→depot)."""
+    """Calculate total distance of a single fleet route (depot→patients→depot).
+    Skips -1 (depot return sentinel) and adds depot return distance instead."""
     if not route:
         return 0.0
     total = 0.0
     cur_loc = 0
     for p in route:
+        if p == -1:
+            if cur_loc != 0:
+                total += dist_matrix[cur_loc, 0]
+            cur_loc = 0
+            continue
         p_loc = loc[p]
         total += dist_matrix[cur_loc, p_loc]
         cur_loc = p_loc
@@ -720,14 +779,20 @@ def crossover_solutions(parent1, parent2, instance):
 
 
 def moead(instances, dist_matrix, fleet_info, n_weights=11,
-          n_gen=500, T=3, mutation_rate=0.3, verbose=True):
+          weight_vectors=None, n_gen=500, T=3, mutation_rate=0.3, verbose=True):
     """
     MOEA/D main algorithm.
 
     For each instance, evolves {n_weights} solutions (one per weight vector)
     using Tchebycheff decomposition. Collects results across all instances.
+
+    If weight_vectors is provided, it overrides n_weights with custom λ set.
     """
-    weights = generate_weight_vectors(n_weights)
+    if weight_vectors is not None:
+        weights = [tuple(w) for w in weight_vectors]
+        n_weights = len(weights)
+    else:
+        weights = generate_weight_vectors(n_weights)
     neighborhoods = compute_neighborhoods(weights, T)
 
     if verbose:
@@ -888,12 +953,15 @@ def main():
         description='MOEA/D baseline for HHCRSP')
     parser.add_argument('--graph_size', type=int, default=50,
                         help='Problem size (50 or 100)')
-    parser.add_argument('--n_instances', type=int, default=100,
-                        help='Number of test instances')
+    parser.add_argument('--n_instances', type=int, default=1000,
+                        help='Number of test instances (default: 1000)')
     parser.add_argument('--filename', type=str, default=None,
-                        help='Load instances from .pkl file')
+                        help='Load instances from .pkl file (use shared_test_*.pkl for fair comparison)')
     parser.add_argument('--n_weights', type=int, default=11,
-                        help='Number of weight vectors (Pareto points)')
+                        help='Number of uniformly spaced weight vectors (ignored if --weight_list set)')
+    parser.add_argument('--weight_list', type=str, default=None,
+                        help='Custom weight vectors as JSON, e.g. '
+                             '"[[0.0,1.0],[0.3,0.7],[0.5,0.5],[0.7,0.3],[1.0,0.0]]"')
     parser.add_argument('--n_gen', type=int, default=500,
                         help='Number of generations')
     parser.add_argument('--T', type=int, default=3,
@@ -929,10 +997,17 @@ def main():
         instances = generate_instances(opts.n_instances, opts.graph_size,
                                        arrival_prob, seed=opts.seed)
 
+    custom_weights = None
+    if opts.weight_list:
+        import json
+        custom_weights = json.loads(opts.weight_list)
+        print(f"Using custom weight vectors: {custom_weights}")
+
     start_time = time.time()
     pareto_results, weights = moead(
         instances, dist_matrix, fleet_info,
         n_weights=opts.n_weights,
+        weight_vectors=custom_weights,
         n_gen=opts.n_gen,
         T=opts.T,
         mutation_rate=opts.mutation_rate,
@@ -954,6 +1029,11 @@ def main():
               f"  {r['f2_mean']:8.2f} ± {r['f2_std']:<8.2f}")
     print("=" * 70)
 
+    # Compute and print hypervolume
+    hv, ref_point = compute_hypervolume(pareto_results)
+    print(f"\nHypervolume Indicator: {hv:.2f}")
+    print(f"Reference point: f₁={ref_point[0]:.2f}, f₂={ref_point[1]:.2f}")
+
     # Save results (same format as DRL pareto_results_*.pkl)
     os.makedirs(opts.output_dir, exist_ok=True)
     out_path = os.path.join(opts.output_dir,
@@ -962,6 +1042,9 @@ def main():
         pickle.dump(pareto_results, f)
     print(f"\nResults saved to {out_path}")
 
+    # Save hypervolume to txt as well
+    hv_info = {'hypervolume': hv, 'ref_point': ref_point}
+
     txt_path = os.path.join(opts.output_dir,
                             f'moead_results_{opts.graph_size}_exp1.txt')
     with open(txt_path, 'w') as f:
@@ -969,7 +1052,8 @@ def main():
                 f"{opts.n_instances} instances)\n")
         f.write(f"Gen={opts.n_gen}, T={opts.T}, "
                 f"Mutation={opts.mutation_rate}, Seed={opts.seed}\n")
-        f.write(f"Time: {elapsed:.1f}s\n\n")
+        f.write(f"Time: {elapsed:.1f}s\n")
+        f.write(f"Hypervolume: {hv:.4f} (ref: f1={ref_point[0]:.2f}, f2={ref_point[1]:.2f})\n\n")
         f.write(f"{'l1':>6}{'l2':>6}{'f1_mean':>12}{'f1_std':>10}"
                 f"{'f2_mean':>12}{'f2_std':>10}\n")
         for r in pareto_results:
@@ -978,6 +1062,12 @@ def main():
                     f"{r['f1_std']:10.2f}{r['f2_mean']:12.2f}"
                     f"{r['f2_std']:10.2f}\n")
     print(f"Text results saved to {txt_path}")
+
+    h, r = divmod(int(elapsed), 3600)
+    m, s = divmod(r, 60)
+    print("\n" + "=" * 60)
+    print("MOEA/D completed. Total runtime: {:d}h {:02d}m {:02d}s ({:.1f}s)".format(h, m, s, elapsed))
+    print("=" * 60)
 
 
 if __name__ == '__main__':

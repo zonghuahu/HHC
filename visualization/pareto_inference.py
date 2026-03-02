@@ -1,273 +1,230 @@
 """
-Pareto Front Inference Script for WE-Add Multi-Objective HHC
+DRL Pareto front inference: sweep 101 lambda weight vectors on shared test data.
 
-Generate solutions for multiple weight vectors λ and plot the Pareto front
-showing the trade-off between:
-  f₁ = Total Travel Distance
-  f₂ = Total Patient Waiting Time
+For each lambda = (l1, l2) with l1 in [0, 0.01, ..., 1.0]:
+  - Run greedy decoding across all 6 fleets
+  - Record mean/std of f1 (distance) and f2 (waiting time)
+
+Output: paretofront/pareto_results_{graph_size}_{exp_name}.pkl
+        paretofront/pareto_front_{graph_size}_{exp_name}.png
 
 Usage:
-  python pareto_inference.py --load_path outputs/agh_50/<run_name>/epoch-X.pt
-  python pareto_inference.py --load_path outputs/agh_50/<run_name>/epoch-X.pt --n_weights 21
-  python pareto_inference.py --load_path outputs/agh_50/<run_name>/epoch-X.pt --val_dataset path/to/val.pkl
+  python -u visualization/pareto_inference.py \
+      --load_path outputs/agh_50/run_xxx/epoch-99.pt \
+      --graph_size 50 \
+      --val_dataset paretofront/shared_test_50.pkl \
+      --exp_name exp1 \
+      --output_dir paretofront
 """
-
 import os
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import argparse
-import torch
-import numpy as np
 import pickle
+import numpy as np
+import torch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from utils.functions import load_model
+from utils import move_to
+from nets.attention_model import set_decode_type
+
 import matplotlib
-matplotlib.use('Agg')  # 非交互式后端，确保服务器上也能保存图片
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-from torch.utils.data import DataLoader
-
-from nets.attention_model import AttentionModel, set_decode_type
-from utils import load_problem, move_to
 
 
-def get_pareto_args():
-    parser = argparse.ArgumentParser(description="Pareto Front Inference for WE-Add Multi-Objective HHC")
-    parser.add_argument('--load_path', type=str, required=True, help='Path to trained model checkpoint')
-    parser.add_argument('--n_weights', type=int, default=11, help='Number of weight vectors (default: 11)')
-    parser.add_argument('--graph_size', type=int, default=50, help='Problem graph size (default: 50)')
-    parser.add_argument('--val_size', type=int, default=100, help='Number of validation instances (default: 100)')
-    parser.add_argument('--val_dataset', type=str, default=None, help='Validation dataset .pkl file')
-    parser.add_argument('--batch_size', type=int, default=100, help='Batch size for inference')
-    parser.add_argument('--output_dir', type=str, default='.', help='Directory to save output files')
-    parser.add_argument('--exp_name', type=str, default='exp1', help='Experiment name for output files (e.g., exp1, exp2)')
-    parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
-    parser.add_argument('--seed', type=int, default=12345, help='Random seed')
-    return parser.parse_args()
-
-
-def load_model_from_checkpoint(load_path, device):
-    """加载训练好的模型"""
-    problem = load_problem('agh')
-    model = AttentionModel(
-        128,  # embedding_dim
-        128,  # hidden_dim
-        problem,
-        n_encode_layers=3,
-        mask_inner=True,
-        mask_logits=True,
-        normalization='batch',
-        tanh_clipping=10.,
-    ).to(device)
-
-    # 加载检查点
-    load_data = torch.load(load_path, map_location=device, weights_only=False)
-    model.load_state_dict(load_data['model'])
-    model.eval()
+def pareto_inference(model, dataset, device, num_lambdas=101):
+    """Run inference across a grid of lambda values, return per-lambda results."""
     set_decode_type(model, "greedy")
+    model.eval()
 
-    print(f"Model loaded from {load_path}")
-    return model, problem
+    lambdas = np.linspace(0, 1, num_lambdas)
+    results = []
+
+    for idx, l1 in enumerate(lambdas):
+        l2 = 1.0 - l1
+        lv = torch.tensor([[l1, l2]], dtype=torch.float32, device=device)
+
+        all_f1, all_f2 = [], []
+
+        for bat in torch.utils.data.DataLoader(dataset, batch_size=200):
+            bs = bat['loc'].size(0)
+            lv_batch = lv.expand(bs, -1)
+
+            bat_tw_left = bat['arrival'].repeat(
+                len(model.fleet_info['next_duration']) + 1, 1, 1).to(device)
+            bat_tw_right = bat['departure']
+            need = bat['need']
+
+            batch_f1 = torch.zeros(bs, device=device)
+            batch_f2 = torch.zeros(bs, device=device)
+
+            for f in model.fleet_info['order']:
+                next_dur = torch.tensor(
+                    model.fleet_info['next_duration'][model.fleet_info['precedence'][f]]
+                ).repeat(bs, 1).type_as(bat['loc'])
+
+                tw_right = bat_tw_right - torch.gather(next_dur, 1, bat['type'])
+                tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
+
+                tw_left = bat_tw_left[model.fleet_info['precedence'][f]]
+                tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
+
+                duration = torch.tensor(
+                    model.fleet_info['duration'][f]
+                ).repeat(bs, 1).type_as(bat['loc'])
+
+                if f == 1:
+                    fmask = (need == 1) | (need == 9)
+                elif f == 2:
+                    fmask = (need == 2) | (need == 7)
+                elif f == 3:
+                    fmask = (need == 3) | (need == 7)
+                elif f == 4:
+                    fmask = (need == 4) | (need == 8)
+                elif f == 5:
+                    fmask = (need == 5) | (need == 8)
+                elif f == 6:
+                    fmask = (need == 6) | (need == 9)
+                else:
+                    fmask = (need == f)
+
+                tw_right_f = tw_right.clone()
+                tw_right_f[:, 1:] = tw_right[:, 1:] * fmask.type_as(tw_right).float()
+                tw_left_f = tw_left.clone()
+                tw_left_f[:, 1:] = tw_left[:, 1:] * fmask.type_as(tw_left).float()
+                need_f = need.clone() * fmask.type_as(need).float()
+
+                fleet_bat = {
+                    'loc': bat['loc'],
+                    'distance': model.distance.expand(bs, len(model.distance)),
+                    'duration': torch.gather(duration, 1, bat['type']),
+                    'tw_right': tw_right_f,
+                    'tw_left': tw_left_f,
+                    'fleet': torch.full((bs, 1), f - 1).type_as(bat['loc']),
+                    'need': need_f,
+                }
+
+                if model.rnn_time:
+                    model.pre_tw = None
+
+                with torch.no_grad():
+                    f1, f2, _, serve_time = model(move_to(fleet_bat, device), lambda_vector=lv_batch)
+
+                batch_f1 += f1
+                batch_f2 += f2
+
+                next_stage = model.fleet_info['precedence'][f] + 1
+                fmask = fmask.to(device)
+                if f == 1:
+                    bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:], bat_tw_left[next_stage])
+                else:
+                    bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
+
+            all_f1.append(batch_f1.cpu())
+            all_f2.append(batch_f2.cpu())
+
+        all_f1 = torch.cat(all_f1)
+        all_f2 = torch.cat(all_f2)
+
+        r = {
+            'lambda': (l1, l2),
+            'f1_mean': all_f1.mean().item(),
+            'f1_std': all_f1.std().item(),
+            'f2_mean': all_f2.mean().item(),
+            'f2_std': all_f2.std().item(),
+        }
+        results.append(r)
+
+        if idx % 10 == 0 or idx == num_lambdas - 1:
+            print(f"  [{idx+1}/{num_lambdas}] λ=({l1:.2f},{l2:.2f}) "
+                  f"f1={r['f1_mean']:.1f}±{r['f1_std']:.1f}  "
+                  f"f2={r['f2_mean']:.1f}±{r['f2_std']:.1f}")
+
+    return results
 
 
-def run_inference_with_lambda(model, dataset, lambda_vec, device, batch_size):
-    """
-    对给定的 λ 权重向量，使用贪婪解码生成解并计算两个目标值。
-    返回每个实例的 (f1, f2) 值。
-    """
-    all_f1, all_f2 = [], []
-
-    for bat in DataLoader(dataset, batch_size=batch_size):
-        bat_f1, bat_f2 = [], []
-
-        bat_tw_left = bat['arrival'].repeat(len(model.fleet_info['next_duration']) + 1, 1, 1).to(device)
-        bat_tw_right = bat['departure']
-        need = bat['need']
-
-        # 创建 lambda_vector
-        cur_batch_size = bat['loc'].size(0)
-        lambda_vector = torch.tensor([lambda_vec], dtype=torch.float, device=device).expand(cur_batch_size, -1)
-
-        fleet_f1_total = torch.zeros(cur_batch_size, device=device)
-        fleet_f2_total = torch.zeros(cur_batch_size, device=device)
-
-        for f in model.fleet_info['order']:
-            next_duration = torch.tensor(
-                model.fleet_info['next_duration'][model.fleet_info['precedence'][f]]
-            ).repeat(bat['loc'].size(0), 1).type_as(bat['loc'])
-
-            tw_right = bat_tw_right - torch.gather(next_duration, 1, bat['type'])
-            tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
-
-            tw_left = bat_tw_left[model.fleet_info['precedence'][f]]
-            tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
-
-            duration = torch.tensor(model.fleet_info['duration'][f]) \
-                .repeat(bat['loc'].size(0), 1).type_as(bat['loc'])
-
-            if f == 1:
-                mask = (need == 1) | (need == 9)
-            elif f == 2:
-                mask = (need == 2) | (need == 7)
-            elif f == 3:
-                mask = (need == 3) | (need == 7)
-            elif f == 4:
-                mask = (need == 4) | (need == 8)
-            elif f == 5:
-                mask = (need == 5) | (need == 8)
-            elif f == 6:
-                mask = (need == 6) | (need == 9)
-            else:
-                mask = (need == f)
-
-            tw_right_filtered = tw_right.clone()
-            tw_right_filtered[:, 1:] = tw_right[:, 1:] * mask.type_as(tw_right).float()
-
-            tw_left_filtered = tw_left.clone()
-            tw_left_filtered[:, 1:] = tw_left[:, 1:] * mask.type_as(tw_left).float()
-
-            need_filtered = need.clone()
-            need_filtered = need_filtered * mask.type_as(need).float()
-
-            fleet_bat = {
-                'loc': bat['loc'],
-                'distance': model.distance.expand(bat['loc'].size(0), len(model.distance)),
-                'duration': torch.gather(duration, 1, bat['type']),
-                'tw_right': tw_right_filtered,
-                'tw_left': tw_left_filtered,
-                'fleet': torch.full((bat['loc'].size(0), 1), f - 1).type_as(bat['loc']),
-                'need': need_filtered,
-            }
-
-            with torch.no_grad():
-                _, _, serve_time, f1, f2 = model(
-                    move_to(fleet_bat, device),
-                    lambda_vector=lambda_vector
-                )
-
-            fleet_f1_total += f1
-            fleet_f2_total += f2
-
-            # 更新时间窗口
-            next_stage = model.fleet_info['precedence'][f] + 1
-            mask = mask.to(device)
-            if f == 1:
-                bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
-            else:
-                bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
-
-        all_f1.append(fleet_f1_total.cpu())
-        all_f2.append(fleet_f2_total.cpu())
-
-    return torch.cat(all_f1, 0), torch.cat(all_f2, 0)
-
-
-def plot_pareto_front(results, output_path, graph_size=50, exp_name='exp1'):
-    """绘制 Pareto 前沿图"""
+def plot_pareto(results, save_path, graph_size, exp_name):
     f1_means = [r['f1_mean'] for r in results]
     f2_means = [r['f2_mean'] for r in results]
-    lambdas = [r['lambda'] for r in results]
+    lambdas = [r['lambda'][0] for r in results]
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    scatter = ax.scatter(f1_means, f2_means, c=lambdas,
+                         cmap='coolwarm', s=80, zorder=5,
+                         edgecolors='black', linewidths=0.5)
 
-    # 绘制散点
-    scatter = ax.scatter(f1_means, f2_means, c=[l[0] for l in lambdas],
-                         cmap='coolwarm', s=120, zorder=5, edgecolors='black', linewidths=0.5)
+    sorted_idx = np.argsort(f1_means)
+    ax.plot([f1_means[i] for i in sorted_idx],
+            [f2_means[i] for i in sorted_idx],
+            'k--', alpha=0.3, linewidth=1)
 
-    # 连接线
-    sorted_indices = np.argsort(f1_means)
-    f1_sorted = [f1_means[i] for i in sorted_indices]
-    f2_sorted = [f2_means[i] for i in sorted_indices]
-    ax.plot(f1_sorted, f2_sorted, 'k--', alpha=0.3, linewidth=1)
-
-    # 标注 λ 值
-    for i, (f1, f2, lam) in enumerate(zip(f1_means, f2_means, lambdas)):
-        ax.annotate(f'λ₁={lam[0]:.1f}', (f1, f2),
-                    textcoords="offset points", xytext=(8, 8), fontsize=7, alpha=0.8)
-
-    # 颜色条
     cbar = plt.colorbar(scatter, ax=ax)
     cbar.set_label('λ₁ (Distance Weight)', fontsize=11)
-
     ax.set_xlabel('Total Travel Distance (f₁)', fontsize=13)
     ax.set_ylabel('Total Patient Waiting Time (f₂)', fontsize=13)
-    ax.set_title(f'Pareto Front: Travel Distance vs. Waiting Time (n={graph_size}, {exp_name})', fontsize=14)
+    ax.set_title(f'DRL Pareto Front: n={graph_size} ({exp_name})', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3)
 
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Pareto front saved to {output_path}")
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    print(f"[OK] Pareto front plot saved to: {save_path}")
 
 
 def main():
-    args = get_pareto_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--load_path', type=str, required=True)
+    parser.add_argument('--graph_size', type=int, default=50)
+    parser.add_argument('--val_size', type=int, default=1000)
+    parser.add_argument('--val_dataset', type=str, default=None)
+    parser.add_argument('--seed', type=int, default=1234)
+    parser.add_argument('--exp_name', type=str, default='exp1')
+    parser.add_argument('--output_dir', type=str, default='paretofront')
+    parser.add_argument('--num_lambdas', type=int, default=101)
+    args = parser.parse_args()
 
-    # 设置设备和随机种子
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
-    # 加载模型
-    model, problem = load_model_from_checkpoint(args.load_path, device)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
 
-    # 加载或生成数据集
-    dataset = problem.make_dataset(
-        size=args.graph_size,
-        num_samples=args.val_size,
-        filename=args.val_dataset
-    )
-    print(f"Dataset: {len(dataset)} instances, graph_size={args.graph_size}")
+    print(f"Loading model from {args.load_path} ...")
+    model, model_args = load_model(args.load_path)
+    model = model.to(device)
 
-    # === 生成权重向量并推理 ===
-    weight_vectors = [[0.0, 1.0], [0.3, 0.7], [0.5, 0.5], [0.7, 0.3], [1.0, 0.0]]
+    from problems.agh.problem_agh import AGH
+    if args.val_dataset:
+        dataset = AGH.make_dataset(filename=args.val_dataset, size=args.graph_size, num_samples=args.val_size)
+    else:
+        dataset = AGH.make_dataset(size=args.graph_size, num_samples=args.val_size)
 
-    results = []
-    print(f"\nRunning inference with {len(weight_vectors)} weight vectors...")
-    for lambda_vec in tqdm(weight_vectors, desc="Weight vectors"):
-        f1_vals, f2_vals = run_inference_with_lambda(model, dataset, lambda_vec, device, args.batch_size)
-        result = {
-            'lambda': lambda_vec,
-            'f1_mean': f1_vals.mean().item(),
-            'f2_mean': f2_vals.mean().item(),
-            'f1_std': f1_vals.std().item(),
-            'f2_std': f2_vals.std().item(),
-            'f1_all': f1_vals.numpy(),
-            'f2_all': f2_vals.numpy(),
-        }
-        results.append(result)
-        print(f"  λ={lambda_vec} → f₁={result['f1_mean']:.2f} ± {result['f1_std']:.2f}, "
-              f"f₂={result['f2_mean']:.2f} ± {result['f2_std']:.2f}")
+    print(f"Dataset: {len(dataset)} instances, n={args.graph_size}")
+    print(f"Sweeping {args.num_lambdas} lambda values ...")
 
-    # === 绘制 Pareto 前沿 ===
-    # Save to HHC/paretofront/ directory with graph size and experiment name
-    pareto_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paretofront')
-    os.makedirs(pareto_dir, exist_ok=True)
-    
-    filename = f'pareto_front_{args.graph_size}_{args.exp_name}.png'
-    output_path = os.path.join(pareto_dir, filename)
-    plot_pareto_front(results, output_path, graph_size=args.graph_size, exp_name=args.exp_name)
+    results = pareto_inference(model, dataset, device, num_lambdas=args.num_lambdas)
 
-    # Also save a copy in the run output_dir for reference
-    output_path_run = os.path.join(args.output_dir, filename)
-    plot_pareto_front(results, output_path_run, graph_size=args.graph_size, exp_name=args.exp_name)
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    # === 保存结果数据 ===
-    results_filename = f'pareto_results_{args.graph_size}_{args.exp_name}.pkl'
-    results_path = os.path.join(pareto_dir, results_filename)
-    save_results = [{k: v for k, v in r.items() if k != 'f1_all' and k != 'f2_all'} for r in results]
-    with open(results_path, 'wb') as f:
-        pickle.dump(save_results, f)
-    print(f"Results saved to {results_path}")
+    pkl_path = os.path.join(args.output_dir, f'pareto_results_{args.graph_size}_{args.exp_name}.pkl')
+    with open(pkl_path, 'wb') as f:
+        pickle.dump(results, f)
+    print(f"[OK] Results saved to: {pkl_path}")
 
-    # === 打印结果表格 ===
-    print("\n" + "=" * 70)
-    print(f"{'λ₁':>6} {'λ₂':>6} {'f₁ (Distance)':>16} {'f₂ (Waiting)':>16}")
-    print("-" * 70)
-    for r in results:
-        print(f"{r['lambda'][0]:>6.1f} {r['lambda'][1]:>6.1f} "
-              f"{r['f1_mean']:>12.2f} ± {r['f1_std']:<6.2f} "
-              f"{r['f2_mean']:>8.2f} ± {r['f2_std']:<6.2f}")
-    print("=" * 70)
+    txt_path = os.path.join(args.output_dir, f'pareto_results_{args.graph_size}_{args.exp_name}.txt')
+    with open(txt_path, 'w') as f:
+        f.write(f"{'lambda1':>8s} {'lambda2':>8s} {'f1_mean':>10s} {'f1_std':>10s} {'f2_mean':>10s} {'f2_std':>10s}\n")
+        for r in results:
+            f.write(f"{r['lambda'][0]:8.4f} {r['lambda'][1]:8.4f} "
+                    f"{r['f1_mean']:10.2f} {r['f1_std']:10.2f} "
+                    f"{r['f2_mean']:10.2f} {r['f2_std']:10.2f}\n")
+    print(f"[OK] Text results saved to: {txt_path}")
+
+    png_path = os.path.join(args.output_dir, f'pareto_front_{args.graph_size}_{args.exp_name}.png')
+    plot_pareto(results, png_path, args.graph_size, args.exp_name)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

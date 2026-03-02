@@ -28,8 +28,13 @@ class StateAGH(NamedTuple):
     fleet: torch.Tensor
 
 
-    SPEED = 80.0  # 车辆速度，单位为分钟（用于将距离转换为旅行时间）
-    NODE_SIZE = 92  # 节点总数（graph_size + 1，通常为 91 个登机口 + 1 个车库）
+    SPEED = 80.0
+    NODE_SIZE = 101  # 100 个患者位置 + 1 个 depot
+
+    # combo 约束映射: fleet -> combo need type
+    COMBO_NEED = {3: 7, 5: 8, 6: 9}
+    # late tolerance (minutes): combo patients 的最大迟到容忍
+    LATE_TOLERANCE = {3: 30, 5: 30, 6: 0}
 
     @property
     def visited(self):

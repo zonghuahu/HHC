@@ -1,0 +1,125 @@
+=== MOEA/D (n=50) on shared test data ===
+Loading instances from paretofront/shared_test_50.pkl
+MOEA/D: 11 weight vectors, n_gen=500, T=3
+Evaluating on 1000 instances
+  Instance 1/1000
+  Instance 10/1000
+  Instance 20/1000
+  Instance 30/1000
+  Instance 40/1000
+  Instance 50/1000
+  Instance 60/1000
+  Instance 70/1000
+  Instance 80/1000
+  Instance 90/1000
+  Instance 100/1000
+  Instance 110/1000
+  Instance 120/1000
+  Instance 130/1000
+  Instance 140/1000
+  Instance 150/1000
+  Instance 160/1000
+  Instance 170/1000
+  Instance 180/1000
+  Instance 190/1000
+  Instance 200/1000
+  Instance 210/1000
+  Instance 220/1000
+  Instance 230/1000
+  Instance 240/1000
+  Instance 250/1000
+  Instance 260/1000
+  Instance 270/1000
+  Instance 280/1000
+  Instance 290/1000
+  Instance 300/1000
+  Instance 310/1000
+  Instance 320/1000
+  Instance 330/1000
+  Instance 340/1000
+  Instance 350/1000
+  Instance 360/1000
+  Instance 370/1000
+  Instance 380/1000
+  Instance 390/1000
+  Instance 400/1000
+  Instance 410/1000
+  Instance 420/1000
+  Instance 430/1000
+  Instance 440/1000
+  Instance 450/1000
+  Instance 460/1000
+  Instance 470/1000
+  Instance 480/1000
+  Instance 490/1000
+  Instance 500/1000
+  Instance 510/1000
+  Instance 520/1000
+  Instance 530/1000
+  Instance 540/1000
+  Instance 550/1000
+  Instance 560/1000
+  Instance 570/1000
+  Instance 580/1000
+  Instance 590/1000
+  Instance 600/1000
+  Instance 610/1000
+  Instance 620/1000
+  Instance 630/1000
+  Instance 640/1000
+  Instance 650/1000
+  Instance 660/1000
+  Instance 670/1000
+  Instance 680/1000
+  Instance 690/1000
+  Instance 700/1000
+  Instance 710/1000
+  Instance 720/1000
+  Instance 730/1000
+  Instance 740/1000
+  Instance 750/1000
+  Instance 760/1000
+  Instance 770/1000
+  Instance 780/1000
+  Instance 790/1000
+  Instance 800/1000
+  Instance 810/1000
+  Instance 820/1000
+  Instance 830/1000
+  Instance 840/1000
+  Instance 850/1000
+  Instance 860/1000
+  Instance 870/1000
+  Instance 880/1000
+  Instance 890/1000
+  Instance 900/1000
+  Instance 910/1000
+  Instance 920/1000
+  Instance 930/1000
+  Instance 940/1000
+  Instance 950/1000
+  Instance 960/1000
+  Instance 970/1000
+  Instance 980/1000
+  Instance 990/1000
+  Instance 1000/1000
+
+======================================================================
+  MOEA/D Results | n=50 | 1000 instances | 2287.1s
+        λ₁    λ₂       f₁ (Distance)        f₂ (Waiting)
+----------------------------------------------------------------------
+    0.0    1.0   3003.45 ± 271.59        0.07 ± 0.96    
+    0.1    0.9   2861.24 ± 217.52       13.42 ± 9.33    
+    0.2    0.8   2812.15 ± 209.41       25.09 ± 13.53   
+    0.3    0.7   2782.56 ± 205.76       34.10 ± 17.73   
+    0.4    0.6   2762.65 ± 204.56       42.07 ± 21.67   
+    0.5    0.5   2748.64 ± 203.68       50.08 ± 25.60   
+    0.6    0.4   2737.03 ± 203.11       58.24 ± 30.22   
+    0.7    0.3   2725.10 ± 202.43       69.64 ± 36.59   
+    0.8    0.2   2715.54 ± 201.88       83.81 ± 45.00   
+    0.9    0.1   2707.20 ± 202.33      104.09 ± 57.73   
+    1.0    0.0   2702.60 ± 202.41      127.59 ± 74.55   
+======================================================================
+
+Results saved to paretofront/moead_results_50_exp1.pkl
+Text results saved to paretofront/moead_results_50_exp1.txt

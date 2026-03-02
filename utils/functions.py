@@ -11,14 +11,8 @@ import torch.nn.functional as F
 
 
 def load_problem(name):
-    from problems import TSP, CVRP, SDVRP, OP, PCTSPDet, PCTSPStoch, AGH
+    from problems import AGH
     problem = {
-        'tsp': TSP,
-        'cvrp': CVRP,
-        'sdvrp': SDVRP,
-        'op': OP,
-        'pctsp_det': PCTSPDet,
-        'pctsp_stoch': PCTSPStoch,
         'agh': AGH
     }.get(name, None)
     assert problem is not None, "Currently unsupported problem: {}!".format(name)
@@ -118,7 +112,8 @@ def load_model(path, epoch=None):
         checkpoint_encoder=args.get('checkpoint_encoder', False),
         shrink_size=args.get('shrink_size', None),
         wo_time=args["wo_time"],
-        rnn_time=args["rnn_time"]
+        rnn_time=args["rnn_time"],
+        lambda_dim=2
     )
     # Overwrite model parameters by parameters to load
     load_data = torch_load_cpu(model_filename)

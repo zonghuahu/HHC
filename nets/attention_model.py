@@ -54,12 +54,6 @@ class AttentionModelFixed(NamedTuple):
 
 # === 主模型类 ===
 class AttentionModel(nn.Module):
-    """
-    基于注意力机制的神经网络模型，解决 AGH（机场地面处理）等 VRP 问题。
-    - 编码器：将输入特征（需求、时间窗口等）转为节点嵌入。
-    - 解码器：通过注意力机制选择节点，构建满足约束的路径。
-    - 训练：使用强化学习（REINFORCE）优化策略。
-    """
     def __init__(self,
                  embedding_dim,
                  hidden_dim,
@@ -73,39 +67,32 @@ class AttentionModel(nn.Module):
                  checkpoint_encoder=False,
                  shrink_size=None,
                  wo_time=False,
-                 rnn_time=False):
+                 rnn_time=False,
+                 lambda_dim=2):
         super(AttentionModel, self).__init__()
 
-        # === 模型参数 ===
-        self.embedding_dim = embedding_dim  # 嵌入维度
-        self.hidden_dim = hidden_dim  # 隐藏层维度（未直接使用）
-        self.n_encode_layers = n_encode_layers  # 编码器层数
-        self.decode_type = None  # 解码类型（'greedy' 或 'sampling'）
-        self.temp = 1.0  # 温度参数，控制 softmax 分布
-        self.allow_partial = problem.NAME == 'sdvrp'  # 是否允许部分配送
-        self.is_vrp = problem.NAME == 'cvrp' or problem.NAME == 'sdvrp'  # 是否为 VRP 问题
-        self.is_orienteering = problem.NAME == 'op'  # 是否为 Orienteering 问题
-        self.is_pctsp = problem.NAME == 'pctsp'  # 是否为 PCTSP 问题
-        self.is_agh = problem.NAME == 'agh'  # 是否为 AGH 问题
-        self.wo_time = wo_time  # 是否忽略时间窗口
-        self.rnn_time = rnn_time  # 是否使用 RNN 嵌入时间窗口
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.n_encode_layers = n_encode_layers
+        self.decode_type = None
+        self.temp = 1.0
+        self.allow_partial = problem.NAME == 'sdvrp'
+        self.is_vrp = problem.NAME == 'cvrp' or problem.NAME == 'sdvrp'
+        self.is_orienteering = problem.NAME == 'op'
+        self.is_pctsp = problem.NAME == 'pctsp'
+        self.is_agh = problem.NAME == 'agh'
+        self.wo_time = wo_time
+        self.rnn_time = rnn_time
+        self.lambda_dim = lambda_dim
 
         print("调用AttentionModel")
 
-        # === AGH 特定配置 ===
         if self.is_agh:
             with open('problems/agh/fleet_info.pkl', 'rb') as f:
-                # 加载车队信息：优先级、操作时长、后续操作时间
-                # {'order': [1, 2, 4, 8, 3, 5, 7, 9, 6, 10],  # 车队求解顺序
-                # 'precedence': {1: 0, 2: 1, ...},  # 车队优先级
-                # 'duration': {1: [0.0, 0.0, 0.0], ...},  # 操作时长
-                # 'next_duration': {4: [0.0, 0.0, 0.0], ...}}  # 后续操作最短时间
                 self.fleet_info = pickle.load(f)
             with open('problems/agh/distance.pkl', 'rb') as f:
-                # 加载距离矩阵：节点间距离，这里面包含了车库
-                # {(0, 0): 0, (0, 1): 439.06, ... (0, 91): xxx, ...}
                 self.distance = pickle.load(f)
-            self.distance = torch.tensor(list(self.distance.values()))  # 转换为张量
+            self.distance = torch.tensor(list(self.distance.values()))
 
         self.tanh_clipping = tanh_clipping  # tanh 裁剪参数，限制 logits 范围
 
@@ -133,16 +120,14 @@ class AttentionModel(nn.Module):
             if self.is_vrp and self.allow_partial:  # 支持部分配送
                 self.project_node_step = nn.Linear(1, 3 * embedding_dim, bias=False)
         elif self.is_agh:
-            # AGH：6 个车队的嵌入
-            self.fleets_embedding = nn.Embedding(6, embedding_dim)     #######################
-            # 步骤上下文：当前节点嵌入 + 当前空闲时间
+            self.fleets_embedding = nn.Embedding(6, embedding_dim)
             step_context_dim = embedding_dim + 1
             if self.wo_time or self.rnn_time:
-                node_dim = 1  # 仅需求
+                node_dim = 1
             else:
-                node_dim = 2  #  时间窗口左右边界
-            # 91 个登机口 + 1 个车库的嵌入
-            self.loc_embedding = nn.Embedding(92, embedding_dim)    #####################
+                node_dim = 2
+            # 100 个患者位置 + 1 个 depot
+            self.loc_embedding = nn.Embedding(101, embedding_dim)
         else:  # TSP
             assert problem.NAME == "tsp", "Unsupported problem: {}".format(problem.NAME)
             step_context_dim = 2 * embedding_dim  # 上下文：首末节点嵌入
@@ -152,17 +137,14 @@ class AttentionModel(nn.Module):
             self.W_placeholder = nn.Parameter(torch.Tensor(2 * embedding_dim))
             self.W_placeholder.data.uniform_(-1, 1)  # 随机初始化
 
-        # === 嵌入层 ===
-        self.init_embed = nn.Linear(node_dim, embedding_dim)  # 特征嵌入
+        self.init_embed = nn.Linear(node_dim, embedding_dim)
 
-        # === 编码器 ===
-        # WE-Add: 对 AGH 问题传入 lambda_dim=2（两个目标：距离和等待时间）
         self.embedder = GraphAttentionEncoder(
             n_heads=n_heads,
             embed_dim=embedding_dim,
             n_layers=self.n_encode_layers,
             normalization=normalization,
-            lambda_dim=2 if self.is_agh else None  # 多目标权重嵌入维度
+            lambda_dim=self.lambda_dim
         )
 
         # === 时间窗口嵌入（AGH 特有） ===
@@ -188,60 +170,29 @@ class AttentionModel(nn.Module):
         if temp is not None:
             self.temp = temp
 
-    def forward(self, input, return_pi=False, lambda_vector=None):
+    def forward(self, input, lambda_vector=None, return_pi=False):
         """
         前向传播：生成路径、成本和对数似然。
-        - input: 字典，包含以下字段：
-            'loc': 登机口索引 [batch_size, graph_size]
-            'distance': 节点间距离 [batch_size, len(distance)]
-            'duration': 操作时长 [batch_size, graph_size]
-            'tw_right',
-            'tw_left': 时间窗口边界 [batch_size, graph_size+1]
-            'fleet': 车队索引 [batch_size, 1]
-        - return_pi: 是否返回路径序列（因 DataParallel 可能不兼容）
-        - lambda_vector: [batch_size, 2] 多目标权重向量 (WE-Add)
-            lambda_vector[:, 0] = λ₁ (距离权重)
-            lambda_vector[:, 1] = λ₂ (等待时间权重)
-        - 输出:
-            - AGH: (cost, ll, serve_time, f1, f2, [pi])
-            - 其他: (cost, ll, [pi])
+        - lambda_vector: [batch_size, 2] 权重向量，用于 WE-Add
+        - 返回 AGH: (f1, f2, ll, serve_time) 或含 pi
         """
         if self.checkpoint_encoder and self.training:
-            # 使用检查点减少内存占用
-            embeddings, _ = checkpoint(self.embedder, self._init_embed(input))
+            embeddings, _ = checkpoint(self.embedder, self._init_embed(input), lambda_vector)
         else:
-            # 正常编码：生成节点嵌入，传入 lambda_vector 用于 WE-Add
-            embeddings, _ = self.embedder(
-                self._init_embed(input),
-                lambda_val=lambda_vector
-            )  # [batch_size, graph_size+1, embedding_dim]
+            embeddings, _ = self.embedder(self._init_embed(input), lambda_val=lambda_vector)
 
-        # 解码：生成对数概率、路径和服务时间
-        _log_p, pi, serve_time = self._inner(input, embeddings)  # pi是路径（50个节点）
+        _log_p, pi, serve_time = self._inner(input, embeddings)
+
+        cost, mask = self.problem.get_costs(input, pi)
+
+        ll = self._calc_log_likelihood(_log_p, pi, mask)
 
         if self.is_agh:
-            # === 多目标成本计算 ===
-            # 获取两个目标分量：f1=总距离, f2=总等待时间
-            f1, f2, mask = self.problem.get_costs(input, pi, return_components=True)
-
-            if lambda_vector is not None:
-                # 标量化成本: cost = λ₁·f₁ + λ₂·f₂
-                cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
-            else:
-                # 无 lambda 时，退回单目标（仅距离）
-                cost = f1
-
-            # 计算对数似然
-            ll = self._calc_log_likelihood(_log_p, pi, mask)
-
+            f1, f2 = cost  # get_costs now returns (f1, f2)
             if return_pi:
-                return cost, ll, serve_time, f1, f2, pi
+                return f1, f2, ll, serve_time, pi
             else:
-                return cost, ll, serve_time, f1, f2
-
-        # 非 AGH 问题：保持原有逻辑
-        cost, mask = self.problem.get_costs(input, pi)
-        ll = self._calc_log_likelihood(_log_p, pi, mask)
+                return f1, f2, ll, serve_time
 
         if return_pi:
             return cost, ll, pi
@@ -251,13 +202,8 @@ class AttentionModel(nn.Module):
         """调用问题特定的束搜索方法"""
         return self.problem.beam_search(*args, **kwargs, model=self)
 
-    def precompute_fixed(self, input, fleet=None):
-        """预计算固定上下文，用于束搜索等场景。
-        - input: 输入数据
-        - fleet: 车队索引（AGH 特有）
-        - 输出: CachedLookup 包装的 AttentionModelFixed
-        """
-        embeddings, _ = self.embedder(self._init_embed(input))
+    def precompute_fixed(self, input, fleet=None, lambda_vector=None):
+        embeddings, _ = self.embedder(self._init_embed(input), lambda_val=lambda_vector)
         return CachedLookup(self._precompute(embeddings, fleet))
 
     def propose_expansions(self, beam, fixed, expand_size=None, normalize=False, max_calc_batch_size=4096):

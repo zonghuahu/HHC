@@ -20,24 +20,18 @@ def get_inner_model(model):
     """
     return model.module if isinstance(model, DataParallel) else model
 
-# === 验证函数 ===
 def validate(model, dataset, opts):
-    """验证模型性能，计算平均成本。
-    - model: AttentionModel 实例
-    - dataset: 验证数据集
-    - opts: 配置选项（包含设备、批次大小等）
-    - 返回: 平均成本
-    """
+    """验证模型性能，使用固定 lambda=[0.5, 0.5] 评估标量化成本。"""
     print('Validating...')
-    cost = rollout(model, dataset, opts)  # 执行 rollout 评估
+    cost = rollout(model, dataset, opts)
     if model.is_agh:
-        cost = cost.sum(1)  # AGH：对所有车队成本求和
-    avg_cost = cost.mean()  # 计算平均成本
+        cost = cost.sum(1)
+    avg_cost = cost.mean()
     print('Validation overall avg_cost: {} +- {}'.format(avg_cost, torch.std(cost) / math.sqrt(len(cost))))
     return avg_cost
 
-# === Rollout 评估 ===
 def rollout(model, dataset, opts, lambda_vector=None):
+    """Rollout 评估，支持传入 lambda_vector 用于多目标标量化。"""
     set_decode_type(model, "greedy")
     model.eval()
 
@@ -49,19 +43,18 @@ def rollout(model, dataset, opts, lambda_vector=None):
             bat_tw_left = bat['arrival'].repeat(len(model.fleet_info['next_duration']) + 1, 1, 1).to(opts.device)
             bat_tw_right = bat['departure']
             need = bat['need']
+            bs = bat['loc'].size(0)
 
-            # === WE-Add: 验证/基线 λ 向量 ===
-            batch_size_eval = bat['loc'].size(0)
-            if lambda_vector is not None:
-                # Use provided lambda_vector (e.g., during training baseline eval)
-                lambda_vector_eval = lambda_vector
+            if lambda_vector is None:
+                lv = torch.tensor([[0.5, 0.5]], device=opts.device).expand(bs, -1)
             else:
-                # Default to balanced weights for validation
-                lambda_vector_eval = torch.tensor([[0.5, 0.5]], dtype=torch.float, device=opts.device).expand(batch_size_eval, -1)
+                lv = lambda_vector.to(opts.device)
+                if lv.dim() == 1:
+                    lv = lv.unsqueeze(0).expand(bs, -1)
 
             for f in model.fleet_info['order']:
                 next_duration = torch.tensor(model.fleet_info['next_duration'][model.fleet_info['precedence'][f]]) \
-                    .repeat(bat['loc'].size(0), 1).type_as(bat['loc'])
+                    .repeat(bs, 1).type_as(bat['loc'])
 
                 tw_right = bat_tw_right - torch.gather(next_duration, 1, bat['type'])
                 tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
@@ -70,39 +63,39 @@ def rollout(model, dataset, opts, lambda_vector=None):
                 tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
 
                 duration = torch.tensor(model.fleet_info['duration'][f]) \
-                    .repeat(bat['loc'].size(0), 1).type_as(bat['loc'])
+                    .repeat(bs, 1).type_as(bat['loc'])
 
                 if f == 1:
-                    mask = (need == 1) | (need == 9)
+                    fmask = (need == 1) | (need == 9)
                 elif f == 2:
-                    mask = (need == 2) | (need == 7)
+                    fmask = (need == 2) | (need == 7)
                 elif f == 3:
-                    mask = (need == 3) | (need == 7)
+                    fmask = (need == 3) | (need == 7)
                 elif f == 4:
-                    mask = (need == 4) | (need == 8)
+                    fmask = (need == 4) | (need == 8)
                 elif f == 5:
-                    mask = (need == 5) | (need == 8)
+                    fmask = (need == 5) | (need == 8)
                 elif f == 6:
-                    mask = (need == 6) | (need == 9)
+                    fmask = (need == 6) | (need == 9)
                 else:
-                    mask = (need == f)
+                    fmask = (need == f)
 
                 tw_right_filtered = tw_right.clone()
-                tw_right_filtered[:, 1:] = tw_right[:, 1:] * mask.type_as(tw_right).float()
+                tw_right_filtered[:, 1:] = tw_right[:, 1:] * fmask.type_as(tw_right).float()
 
                 tw_left_filtered = tw_left.clone()
-                tw_left_filtered[:, 1:] = tw_left[:, 1:] * mask.type_as(tw_left).float()
+                tw_left_filtered[:, 1:] = tw_left[:, 1:] * fmask.type_as(tw_left).float()
 
                 need_filtered = need.clone()
-                need_filtered = need_filtered * mask.type_as(need).float()
+                need_filtered = need_filtered * fmask.type_as(need).float()
 
                 fleet_bat = {
                     'loc': bat['loc'],
-                    'distance': model.distance.expand(bat['loc'].size(0), len(model.distance)),
+                    'distance': model.distance.expand(bs, len(model.distance)),
                     'duration': torch.gather(duration, 1, bat['type']),
                     'tw_right': tw_right_filtered,
                     'tw_left': tw_left_filtered,
-                    'fleet': torch.full((bat['loc'].size(0), 1), f - 1).type_as(bat['loc']),
+                    'fleet': torch.full((bs, 1), f - 1).type_as(bat['loc']),
                     'need': need_filtered,
                 }
 
@@ -110,19 +103,16 @@ def rollout(model, dataset, opts, lambda_vector=None):
                     model.pre_tw = None
 
                 with torch.no_grad():
-                    # WE-Add: 传入固定 lambda_vector
-                    fleet_cost, _, serve_time, _, _ = model(
-                        move_to(fleet_bat, opts.device),
-                        lambda_vector=lambda_vector_eval
-                    )
-                bat_cost.append(fleet_cost.data.cpu().view(-1, 1))
+                    f1, f2, _, serve_time = model(move_to(fleet_bat, opts.device), lambda_vector=lv)
+                scalarized_cost = lv[:, 0] * f1 + lv[:, 1] * f2
+                bat_cost.append(scalarized_cost.data.cpu().view(-1, 1))
 
                 next_stage = model.fleet_info['precedence'][f] + 1
-                mask = mask.to(opts.device)
+                fmask = fmask.to(opts.device)
                 if f == 1:
-                    bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
+                    bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:], bat_tw_left[next_stage])
                 else:
-                    bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
+                    bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
 
             bat_cost = torch.cat(bat_cost, 1)
             cost.append(bat_cost)
@@ -181,8 +171,7 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
     training_dataset = baseline.wrap_dataset(
         problem.make_dataset(size=opts.graph_size, num_samples=opts.epoch_size, distribution=opts.data_distribution))
     # 这里生成数据是没有带filename参数的
-    # Windows 上使用 num_workers=0 避免多进程问题导致内存泄漏
-    training_dataloader = DataLoader(training_dataset, batch_size=opts.batch_size, num_workers=0, pin_memory=opts.use_cuda)
+    training_dataloader = DataLoader(training_dataset, batch_size=opts.batch_size, num_workers=1)
 
     model.train()  # 切换到训练模式
     set_decode_type(model, "sampling")  # 使用采样解码
@@ -230,129 +219,109 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
     baseline.epoch_callback(model, epoch)  # 基线回调
 
     lr_scheduler.step()  # 更新学习率
-    
-    # 清理 GPU 缓存，防止内存累积导致训练变慢
-    if opts.use_cuda:
-        torch.cuda.empty_cache()
 
-# === 训练 AGH 批次 ===
 def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts):
-    """训练 AGH 批次，使用 REINFORCE 优化多车队路径（WE-Add 多目标）。
-    - model: AttentionModel 实例
-    - optimizer: 优化器
-    - baseline: 基线对象
-    - epoch, batch_id, step: 训练进度
-    - batch: 批次数据
-    - tb_logger: TensorBoard 日志记录器
-    - opts: 配置选项
-    """
-    x, bl_val = baseline.unwrap_batch(batch)  # 解包数据和基线值（bl_val仅用于非AGH）
-    x = move_to(x, opts.device)  # 移动到设备
+    """训练 AGH 批次：多目标 REINFORCE，每 batch 采样一个 lambda 权重向量。"""
+    x, bl_val = baseline.unwrap_batch(batch)
+    assert bl_val is not None
+    x = move_to(x, opts.device)
+    bl_val = move_to(bl_val, opts.device)
 
-    set_decode_type(model, "sampling")  # 使用采样解码
+    set_decode_type(model, "sampling")
 
-    # === WE-Add: 采样随机权重向量 λ ===
-    batch_size = x['loc'].size(0)
-    lambda_1 = torch.rand(batch_size, 1, device=opts.device)  # λ₁ ~ Uniform(0, 1)
-    lambda_2 = 1.0 - lambda_1  # λ₂ = 1 - λ₁
-    lambda_vector = torch.cat([lambda_1, lambda_2], dim=1)  # [batch_size, 2]
+    bs = x['loc'].size(0)
 
-    # === STEP 1: Policy forward pass ===
-    # 初始化时间窗口
-    bat_tw_left = x['arrival'].repeat(len(model.fleet_info['next_duration']) + 1, 1, 1)  # 全局时间窗口左边界
-    bat_tw_right = x['departure']  # 全局时间窗口右边界
+    # 采样 lambda 权重向量: lambda ~ Dirichlet(1, 1) => Uniform on simplex
+    lam = torch.rand(bs, 1, device=opts.device)
+    lambda_vector = torch.cat([lam, 1 - lam], dim=1)  # [batch_size, 2]
+
+    bat_tw_left = x['arrival'].repeat(len(model.fleet_info['next_duration']) + 1, 1, 1)
+    bat_tw_right = x['departure']
     need = x['need']
-    fleet_cost_together, log_likelihood_together, fleet_cost_list, log_likelihood_list = None, None, [], []
 
-    for f in model.fleet_info['order']:  # 按车队优先级
-        # 构造车队输入
+    total_f1 = torch.zeros(bs, device=opts.device)
+    total_f2 = torch.zeros(bs, device=opts.device)
+    log_likelihood_together = torch.zeros(bs, device=opts.device)
+    fleet_cost_list = []
+    log_likelihood_list = []
+
+    for f in model.fleet_info['order']:
         next_duration = torch.tensor(model.fleet_info['next_duration'][model.fleet_info['precedence'][f]],
-                                    device=x['type'].device).repeat(x['loc'].size(0), 1)
+                                    device=x['type'].device).repeat(bs, 1)
         tw_right = bat_tw_right - torch.gather(next_duration, 1, x['type'])
         tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
 
         tw_left = bat_tw_left[model.fleet_info['precedence'][f]]
         tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
-        duration = torch.tensor(model.fleet_info['duration'][f], device=x['type'].device).repeat(x['loc'].size(0), 1)
+        duration = torch.tensor(model.fleet_info['duration'][f], device=x['type'].device).repeat(bs, 1)
 
         if f == 1:
-            mask = (need == 1) | (need == 9)
+            fmask = (need == 1) | (need == 9)
         elif f == 2:
-            mask = (need == 2) | (need == 7)
+            fmask = (need == 2) | (need == 7)
         elif f == 3:
-            mask = (need == 3) | (need == 7)
+            fmask = (need == 3) | (need == 7)
         elif f == 4:
-            mask = (need == 4) | (need == 8)
+            fmask = (need == 4) | (need == 8)
         elif f == 5:
-            mask = (need == 5) | (need == 8)
+            fmask = (need == 5) | (need == 8)
         elif f == 6:
-            mask = (need == 6) | (need == 9)
+            fmask = (need == 6) | (need == 9)
         else:
-            mask = (need == f)
+            fmask = (need == f)
 
-        # 滤掉登机口节点
         tw_right_filtered = tw_right.clone()
-        tw_right_filtered[:, 1:] = tw_right[:, 1:] * mask.float()
+        tw_right_filtered[:, 1:] = tw_right[:, 1:] * fmask.float()
 
         tw_left_filtered = tw_left.clone()
-        tw_left_filtered[:, 1:] = tw_left[:, 1:] * mask.float()
+        tw_left_filtered[:, 1:] = tw_left[:, 1:] * fmask.float()
 
-        # need掩码
         need_filtered = need.clone()
-        need_filtered = need_filtered * mask.type_as(need).float()
+        need_filtered = need_filtered * fmask.type_as(need).float()
 
         fleet_bat = {'loc': x['loc'],
-                     'distance': model.distance.expand(x['loc'].size(0), len(model.distance)),
+                     'distance': model.distance.expand(bs, len(model.distance)),
                      'duration': torch.gather(duration, 1, x['type']),
                      'tw_right': tw_right_filtered,
                      'tw_left': tw_left_filtered,
-                     'fleet': torch.full((x['loc'].size(0), 1), f - 1),
+                     'fleet': torch.full((bs, 1), f - 1),
                      'need': need_filtered,
                      }
 
         if model.rnn_time:
-            model.pre_tw = None  # 重置 RNN 隐藏状态
+            model.pre_tw = None
 
-        # 前向传播（WE-Add: 传入 lambda_vector）
-        fleet_cost, log_likelihood, serve_time, f1, f2 = model(
-            move_to(fleet_bat, opts.device),
-            lambda_vector=lambda_vector
-        )
+        f1, f2, log_likelihood, serve_time = model(move_to(fleet_bat, opts.device), lambda_vector=lambda_vector)
 
-        # 收集成本和对数似然
+        # 标量化成本 = λ₁·f₁ + λ₂·f₂
+        fleet_cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
+
         fleet_cost_list.append(fleet_cost)
         log_likelihood_list.append(log_likelihood)
 
-        if fleet_cost_together is None:
-            fleet_cost_together, log_likelihood_together = fleet_cost, log_likelihood
-        else:
-            fleet_cost_together = fleet_cost_together + fleet_cost
-            log_likelihood_together = log_likelihood_together + log_likelihood
+        total_f1 += f1
+        total_f2 += f2
+        log_likelihood_together += log_likelihood
 
         next_stage = model.fleet_info['precedence'][f] + 1
-        mask = mask.to(opts.device)
+        fmask = fmask.to(opts.device)
         if f == 1:
-            bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
+            bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:], bat_tw_left[next_stage])
         else:
-            bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
+            bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
 
-    # === STEP 2: Baseline with SAME λ ===
-    # Recompute baseline costs using the SAME lambda_vector
-    # This ensures advantage = cost(λ) - baseline(λ) is valid
-    bl_cost_list = baseline.eval_agh(x, model.fleet_info, model.distance, lambda_vector, opts)
-
-    # === STEP 3: REINFORCE loss ===
-    loss = ((fleet_cost_list[0] - bl_cost_list[0]) * log_likelihood_list[0]).mean()
+    # REINFORCE loss: 每个 fleet 的 (cost - baseline) * log_likelihood
+    loss = ((fleet_cost_list[0] - bl_val[:, 0]) * log_likelihood_list[0]).mean()
     for i in range(1, len(fleet_cost_list)):
-        loss += ((fleet_cost_list[i] - bl_cost_list[i]) * log_likelihood_list[i]).mean()
-    loss = loss / len(fleet_cost_list)  # 平均损失
+        loss += ((fleet_cost_list[i] - bl_val[:, i]) * log_likelihood_list[i]).mean()
+    loss = loss / len(fleet_cost_list)
 
     optimizer.zero_grad()
-    loss.backward()  # 反向传播
-    grad_norms = clip_grad_norms(optimizer.param_groups, opts.max_grad_norm)  # 裁剪梯度
-    optimizer.step()  # 更新参数
+    loss.backward()
+    grad_norms = clip_grad_norms(optimizer.param_groups, opts.max_grad_norm)
+    optimizer.step()
 
-    # 记录日志
+    fleet_cost_together = lambda_vector[:, 0] * total_f1 + lambda_vector[:, 1] * total_f2
     if step % int(opts.log_step) == 0:
         log_values(fleet_cost_together, grad_norms, epoch, batch_id, step, log_likelihood_together, loss, 0, tb_logger, opts)
 

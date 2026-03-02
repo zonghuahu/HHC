@@ -1,6 +1,4 @@
 import os
-# 修复 OpenMP 库冲突问题（Anaconda + PyTorch 常见问题）
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import json
 import pprint as pp
 
@@ -17,7 +15,6 @@ from reinforce_baselines import NoBaseline, ExponentialBaseline, CriticBaseline,
 from nets.attention_model import AttentionModel
 from nets.pointer_network import PointerNetwork, CriticNetworkLSTM
 from utils import torch_load_cpu, load_problem
-# Note: Do NOT hardcode CUDA_VISIBLE_DEVICES here - SLURM sets it automatically
 
 def run(opts):
     # 打印运行参数
@@ -81,7 +78,8 @@ def run(opts):
         checkpoint_encoder=opts.checkpoint_encoder,
         shrink_size=opts.shrink_size,
         wo_time=opts.wo_time,
-        rnn_time=opts.rnn_time
+        rnn_time=opts.rnn_time,
+        lambda_dim=2
     ).to(opts.device)
 
     # 使用要加载的参数覆盖模型参数

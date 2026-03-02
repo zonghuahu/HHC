@@ -1,0 +1,22 @@
+Loading instances from paretofront/shared_test_100.pkl
+MOEA/D: 11 weight vectors, n_gen=500, T=3
+Evaluating on 1000 instances
+  Instance 1/1000
+  Instance 10/1000
+  Instance 20/1000
+  Instance 30/1000
+  Instance 40/1000
+  Instance 50/1000
+  Instance 60/1000
+  Instance 70/1000
+  Instance 80/1000
+  Instance 90/1000
+  Instance 100/1000
+  Instance 110/1000
+  Instance 120/1000
+  Instance 130/1000
+  Instance 140/1000
+  Instance 150/1000
+  Instance 160/1000
+  Instance 170/1000
+  Instance 180/1000

@@ -220,29 +220,18 @@ class CriticBaseline(Baseline):
             critic_state_dict = critic_state_dict.state_dict()
         self.critic.load_state_dict({**self.critic.state_dict(), **critic_state_dict})
 
-# === Rollout 基线 ===
 class RolloutBaseline(Baseline):
-    """基于模型 Rollout 的基线，使用贪婪解成本。
-    - model: 基线模型
-    - problem: 问题定义（TSP 或 AGH）
-    - opts: 配置选项
-    - epoch: 初始 epoch
-    """
+    """基于模型 Rollout 的基线，使用贪婪解标量化成本。"""
     def __init__(self, model, problem, opts, epoch=0):
         super(Baseline, self).__init__()
         self.problem = problem
         self.opts = opts
-        self._update_model(model, epoch)  # 初始化基线模型
+        self._update_model(model, epoch)
 
     def _update_model(self, model, epoch, dataset=None):
-        """更新基线模型和数据集。
-        - model: 新模型
-        - epoch: 当前 epoch
-        - dataset: 可选的验证数据集
-        """
-        self.model = copy.deepcopy(model)  # 深拷贝模型
+        self.model = copy.deepcopy(model)
         if dataset is not None:
-            if len(dataset) != self.opts.val_size or (dataset[0] if self.problem.NAME == 'tsp' else dataset[0]['loc']).size(0) != self.opts.graph_size:
+            if len(dataset) != self.opts.val_size or dataset[0]['loc'].size(0) != self.opts.graph_size:
                 print("Warning: not using saved baseline dataset since val_size or graph_size does not match")
                 dataset = None
         if dataset is None:
@@ -250,139 +239,31 @@ class RolloutBaseline(Baseline):
         else:
             self.dataset = dataset
         print("Evaluating baseline model on evaluation dataset\n")
-        self.bl_vals = rollout(self.model, self.dataset, self.opts).cpu().numpy()  # 计算基线成本
+        self.bl_vals = rollout(self.model, self.dataset, self.opts).cpu().numpy()
         if self.model.is_agh:
-            self.bl_vals = self.bl_vals.sum(1)  # AGH：对车队成本求和
-        self.mean = self.bl_vals.mean()  # 平均成本
+            self.bl_vals = self.bl_vals.sum(1)
+        self.mean = self.bl_vals.mean()
         self.epoch = epoch
 
     def wrap_dataset(self, dataset):
-        """包装数据集，添加基线值。
-        - dataset: 输入数据集
-        - 返回: 包装后的数据集
-        """
         print("Evaluating baseline on dataset...")
         if self.model.is_agh:
-            print("Training baseline model...")
-            # 修复: 只调用一次 rollout，原代码调用了两次
-            bl_vals = rollout(self.model, dataset, self.opts)
-            return BaselineDataset(dataset, bl_vals)
+            return BaselineDataset(dataset, rollout(self.model, dataset, self.opts))
         else:
             return BaselineDataset(dataset, rollout(self.model, dataset, self.opts).view(-1, 1))
 
     def unwrap_batch(self, batch):
-        """解包批次数据，返回数据和基线值。
-        - batch: 批次数据
-        - 返回: (数据, 基线值)
-        """
         if self.model.is_agh:
-            return batch['data'], batch['baseline']  # [batch_size, fleet_size=10]
+            return batch['data'], batch['baseline']
         else:
-            return batch['data'], batch['baseline'].view(-1)  # 展平基线值
+            return batch['data'], batch['baseline'].view(-1)
 
     def eval(self, x, c):
-        """使用基线模型计算成本。
-        - x: 输入数据
-        - c: 实际成本
-        - 返回: (基线成本, 0)
-        """
         with torch.no_grad():
-            v, _ = self.model(x)  # 贪婪解码成本
-        return v, 0  # 无基线损失
-
-    def eval_agh(self, x, fleet_info, distance, lambda_vector, opts):
-        """
-        使用基线模型计算 AGH 多车队成本（使用与策略相同的 λ）。
-        
-        Args:
-            x: 输入数据（已在设备上）
-            fleet_info: 车队信息字典
-            distance: 距离张量
-            lambda_vector: [batch_size, 2] 权重向量（与策略相同的 λ）
-            opts: 配置选项
-        
-        Returns:
-            bl_cost_list: 每个车队的基线成本列表
-        """
-        from nets.attention_model import set_decode_type
-        from utils import move_to
-        
-        set_decode_type(self.model, "greedy")
-        self.model.eval()
-        
-        bat_tw_left = x['arrival'].repeat(len(fleet_info['next_duration']) + 1, 1, 1)
-        bat_tw_right = x['departure']
-        need = x['need']
-        bl_cost_list = []
-        
-        for f in fleet_info['order']:
-            next_duration = torch.tensor(fleet_info['next_duration'][fleet_info['precedence'][f]],
-                                        device=x['type'].device).repeat(x['loc'].size(0), 1)
-            tw_right = bat_tw_right - torch.gather(next_duration, 1, x['type'])
-            tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
-            
-            tw_left = bat_tw_left[fleet_info['precedence'][f]]
-            tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
-            duration = torch.tensor(fleet_info['duration'][f], device=x['type'].device).repeat(x['loc'].size(0), 1)
-            
-            if f == 1:
-                mask = (need == 1) | (need == 9)
-            elif f == 2:
-                mask = (need == 2) | (need == 7)
-            elif f == 3:
-                mask = (need == 3) | (need == 7)
-            elif f == 4:
-                mask = (need == 4) | (need == 8)
-            elif f == 5:
-                mask = (need == 5) | (need == 8)
-            elif f == 6:
-                mask = (need == 6) | (need == 9)
-            else:
-                mask = (need == f)
-            
-            tw_right_filtered = tw_right.clone()
-            tw_right_filtered[:, 1:] = tw_right[:, 1:] * mask.float()
-            
-            tw_left_filtered = tw_left.clone()
-            tw_left_filtered[:, 1:] = tw_left[:, 1:] * mask.float()
-            
-            need_filtered = need.clone()
-            need_filtered = need_filtered * mask.type_as(need).float()
-            
-            fleet_bat = {
-                'loc': x['loc'],
-                'distance': distance.expand(x['loc'].size(0), len(distance)),
-                'duration': torch.gather(duration, 1, x['type']),
-                'tw_right': tw_right_filtered,
-                'tw_left': tw_left_filtered,
-                'fleet': torch.full((x['loc'].size(0), 1), f - 1),
-                'need': need_filtered,
-            }
-            
-            if hasattr(self.model, 'rnn_time') and self.model.rnn_time:
-                self.model.pre_tw = None
-            
-            with torch.no_grad():
-                fleet_cost, _, serve_time, _, _ = self.model(
-                    move_to(fleet_bat, opts.device),
-                    lambda_vector=lambda_vector
-                )
-            bl_cost_list.append(fleet_cost.detach())
-            
-            next_stage = fleet_info['precedence'][f] + 1
-            mask = mask.to(opts.device)
-            if f == 1:
-                bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:], bat_tw_left[next_stage])
-            else:
-                bat_tw_left[next_stage] = torch.where(mask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
-        
-        return bl_cost_list
+            v, _ = self.model(x)
+        return v, 0
 
     def epoch_callback(self, model, epoch):
-        """挑战基线模型，若新模型更优则更新。
-        - model: 当前模型
-        - epoch: 当前 epoch
-        """
         print("Evaluating candidate model on evaluation dataset")
         candidate_vals = rollout(model, self.dataset, self.opts).cpu().numpy()
         if model.is_agh:
@@ -390,25 +271,19 @@ class RolloutBaseline(Baseline):
         candidate_mean = candidate_vals.mean()
         print("Epoch {} candidate mean {}, baseline epoch {} mean {}, difference {}".format(
             epoch, candidate_mean, self.epoch, self.mean, candidate_mean - self.mean))
-        if candidate_mean - self.mean < 0:  # 新模型更优
-            t, p = ttest_rel(candidate_vals, self.bl_vals)  # 统计检验
-            p_val = p / 2  # 单侧 p 值
+        if candidate_mean - self.mean < 0:
+            t, p = ttest_rel(candidate_vals, self.bl_vals)
+            p_val = p / 2
             assert t < 0, "T-statistic should be negative"
             print("p-value: {}".format(p_val))
-            if p_val < self.opts.bl_alpha:  # p 值小于阈值
+            if p_val < self.opts.bl_alpha:
                 print('Update baseline')
                 self._update_model(model, epoch)
 
     def state_dict(self):
-        """获取基线状态字典。
-        - 返回: 包含模型、数据集和 epoch 的字典
-        """
         return {'model': self.model, 'dataset': self.dataset, 'epoch': self.epoch}
 
     def load_state_dict(self, state_dict):
-        """加载基线状态字典。
-        - state_dict: 包含模型、数据集和 epoch 的字典
-        """
         load_model = copy.deepcopy(self.model)
         load_model_ = get_inner_model(load_model)
         load_model_.load_state_dict({**load_model_.state_dict(), **state_dict['model'].state_dict()})

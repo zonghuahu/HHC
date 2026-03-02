@@ -77,59 +77,44 @@
 
 import numpy as np
 import pickle
+import os
 
-# 设置随机种子
-np.random.seed(1234) # 1234
+np.random.seed(1234)
 
-num_gates = 91  # 91个登机口
-num_nodes = num_gates + 1  # 1个车库加上91个登机口
+num_locations = 100  # 100 个患者住址位置
+num_nodes = num_locations + 1  # 1 个 depot + 100 个位置
 
-# 先生成91个登机口的随机坐标
-gate_coords = np.random.rand(num_gates, 2) * 100
+location_coords = np.random.rand(num_locations, 2) * 100
 
-# 计算登机口的几何中心作为车库位置
-depot_x = np.mean(gate_coords[:, 0])
-depot_y = np.mean(gate_coords[:, 1])
+depot_x = np.mean(location_coords[:, 0])
+depot_y = np.mean(location_coords[:, 1])
 depot_coord = np.array([[depot_x, depot_y]])
 
-# 组合坐标：车库在索引0，登机口在索引1-91
-coords = np.vstack([depot_coord, gate_coords])
+coords = np.vstack([depot_coord, location_coords])
 
-# 计算距离矩阵
 dist_matrix = np.zeros((num_nodes, num_nodes))
 for i in range(num_nodes):
     for j in range(num_nodes):
         dist_matrix[i, j] = np.linalg.norm(coords[i] - coords[j])
 
-# 转成字典形式 {(i, j): distance}
 distance_info = {}
 for i in range(num_nodes):
     for j in range(num_nodes):
         distance_info[(i, j)] = dist_matrix[i, j]
 
-# 保存字典到文件
-with open('distance.pkl', 'wb') as f:
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(script_dir, 'distance.pkl'), 'wb') as f:
     pickle.dump(distance_info, f)
 
-# 打印并保存每个点的坐标
-print(f"车库坐标 (节点0): ({depot_x:.2f}, {depot_y:.2f})")
-for i in range(num_gates):
-    print(f"登机口坐标 (节点{i+1}): ({gate_coords[i, 0]:.2f}, {gate_coords[i, 1]:.2f})")
-
-# 保存坐标到文件
 coords_info = {}
-coords_info[0] = [depot_x, depot_y]  # 车库坐标
-for i in range(num_gates):
-    coords_info[i+1] = [gate_coords[i, 0], gate_coords[i, 1]]  # 登机口坐标
+coords_info[0] = [depot_x, depot_y]
+for i in range(num_locations):
+    coords_info[i + 1] = [location_coords[i, 0], location_coords[i, 1]]
 
-with open('coordinates.pkl', 'wb') as f:
+with open(os.path.join(script_dir, 'coordinates.pkl'), 'wb') as f:
     pickle.dump(coords_info, f)
 
-# # 验证保存的数据
-# with open('distance.pkl', 'rb') as f:
-#     distance_info = pickle.load(f)
-#     print('distance_info:', distance_info)
-
-with open('coordinates.pkl', 'rb') as f:
-    coords_info = pickle.load(f)
-    print('coordinates_info:', coords_info)
+print(f"Generated {num_nodes} nodes ({num_locations} locations + 1 depot)")
+print(f"Distance matrix: {num_nodes}x{num_nodes} = {len(distance_info)} entries")
+print(f"Depot at ({depot_x:.2f}, {depot_y:.2f})")

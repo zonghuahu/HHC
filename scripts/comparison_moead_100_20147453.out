@@ -1,0 +1,6 @@
+=== MOEA/D (n=100) on shared test data ===
+Loading instances from paretofront/shared_test_100.pkl
+MOEA/D: 101 weight vectors, n_gen=4000, T=3
+Evaluating on 1000 instances
+  Instance 1/1000
+[2026-02-28T01:28:09.610] error: *** JOB 20147453 ON gcn6 CANCELLED AT 2026-02-28T01:28:09 DUE to SIGNAL Terminated ***

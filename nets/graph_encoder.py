@@ -243,14 +243,6 @@ class MultiHeadAttentionLayer(nn.Sequential):
 
 # GraphAttentionEncoder 类：实现图注意力编码器，用于将输入节点特征编码为嵌入
 class GraphAttentionEncoder(nn.Module):
-    # 初始化方法
-    # 参数：
-    #   n_heads: 注意力头数
-    #   embed_dim: 嵌入维度
-    #   n_layers: 编码器层数
-    #   node_dim: 输入节点特征维度（若为 None，则输入已是嵌入）
-    #   normalization: 归一化类型（'batch' 或 'instance'）
-    #   feed_forward_hidden: 前馈网络隐藏层维度
     def __init__(
             self,
             n_heads,
@@ -259,48 +251,33 @@ class GraphAttentionEncoder(nn.Module):
             node_dim=None,
             normalization='batch',
             feed_forward_hidden=512,
-            lambda_dim=None):
+            lambda_dim=2
+    ):
         super(GraphAttentionEncoder, self).__init__()
 
-        # 输入特征到嵌入的线性层（若 node_dim 非 None）
         self.init_embed = nn.Linear(node_dim, embed_dim) if node_dim is not None else None
 
-        # New: 定义W_lambda线性层（若 lambda_dim 非 None）
-        self.W_lambda = nn.Linear(lambda_dim, embed_dim) if lambda_dim is not None else None
+        # WE-Add: lambda weight embedding layer
+        self.W_lambda = nn.Linear(lambda_dim, embed_dim)
 
-        # 多层注意力层，包含 n_layers 个 MultiHeadAttentionLayer
         self.layers = nn.Sequential(*(
             MultiHeadAttentionLayer(n_heads, embed_dim, feed_forward_hidden, normalization)
             for _ in range(n_layers)
         ))
 
-    # 前向传播
-    # 参数：
-    #   x: 输入张量，形状 (batch_size, graph_size, node_dim) 或 (batch_size, graph_size, embed_dim)
-    #   mask: 掩码（当前不支持）
-    # 返回：
-    #   元组：
-    #     - 节点嵌入，形状 (batch_size, graph_size, embed_dim)
-    #     - 图嵌入（节点嵌入的均值），形状 (batch_size, embed_dim)
-    
-    def forward(self, x, mask=None, lambda_val=None):
+    def forward(self, x, lambda_val=None, mask=None):
 
-        assert mask is None, "TODO mask not yet supported!"  # 当前不支持掩码
+        assert mask is None, "TODO mask not yet supported!"
 
-        # 若有初始嵌入层，将输入特征映射到嵌入空间
         h = self.init_embed(x.view(-1, x.size(-1))).view(*x.size()[:2], -1) if self.init_embed is not None else x
 
-        # === WE-Add: 权重嵌入加法 ===
-        # 将 lambda 向量（目标权重）映射到嵌入空间，加到所有节点的初始嵌入上
-        # 这使模型能根据不同的 λ 权重向量生成不同的解
-        if self.W_lambda is not None and lambda_val is not None:
-            h_lambda = self.W_lambda(lambda_val)  # [batch_size, embed_dim]
-            h = h + h_lambda.unsqueeze(1)  # broadcast 到所有节点: [batch_size, graph_size, embed_dim]
+        # WE-Add: add lambda embedding to all node embeddings
+        if lambda_val is not None:
+            lambda_embed = self.W_lambda(lambda_val)  # [batch_size, embed_dim]
+            h = h + lambda_embed.unsqueeze(1)  # broadcast to [batch_size, graph_size, embed_dim]
 
-        # 通过多层注意力编码
         h = self.layers(h)
 
-        # 返回节点嵌入和图嵌入
         return (
             h,  # (batch_size, graph_size, embed_dim)
             h.mean(dim=1),  # average to get embedding of graph, (batch_size, embed_dim)

@@ -1,0 +1,348 @@
+CUDA status: use_cuda=True, device_count=1
+{'baseline': 'rollout',
+ 'batch_size': 64,
+ 'bl_alpha': 0.05,
+ 'bl_warmup_epochs': 0,
+ 'checkpoint_encoder': False,
+ 'checkpoint_epochs': 1,
+ 'data_distribution': None,
+ 'embedding_dim': 128,
+ 'epoch_size': 12800,
+ 'epoch_start': 0,
+ 'eval_batch_size': 1000,
+ 'eval_only': False,
+ 'exp_beta': 0.8,
+ 'fine_tune': False,
+ 'graph_size': 100,
+ 'hidden_dim': 128,
+ 'load_path': None,
+ 'log_dir': 'logs',
+ 'log_stdout': True,
+ 'log_step': 50,
+ 'lr_critic': 0.0001,
+ 'lr_decay': 1.0,
+ 'lr_model': 0.0001,
+ 'max_grad_norm': 1.0,
+ 'model': 'attention',
+ 'n_encode_layers': 3,
+ 'n_epochs': 200,
+ 'no_cuda': False,
+ 'no_progress_bar': True,
+ 'no_tensorboard': True,
+ 'normalization': 'batch',
+ 'optimizer': 'Adam',
+ 'output_dir': 'outputs',
+ 'problem': 'agh',
+ 'resume': None,
+ 'rnn_time': False,
+ 'run_name': 'train_weadd_100_20260302T144822',
+ 'save_dir': 'outputs/agh_100/train_weadd_100_20260302T144822',
+ 'seed': 123456,
+ 'shrink_size': None,
+ 'tanh_clipping': 10.0,
+ 'use_cuda': True,
+ 'val_dataset': None,
+ 'val_size': 1000,
+ 'wo_time': False}
+调用AttentionModel
+加载 rollout baseline
+Evaluating baseline model on evaluation dataset
+
+Training
+Start train epoch 0, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 0...
+epoch: 0, train_batch_id: 0, avg_cost: 31869.3203125
+loss: -4209.664587898484, grad norm: 196514.640625, clipped: 1.0
+epoch: 0, train_batch_id: 50, avg_cost: 22942.5703125
+loss: 28570.810483518035, grad norm: 148348.015625, clipped: 1.0
+epoch: 0, train_batch_id: 100, avg_cost: 22969.59375
+loss: 25697.374046702214, grad norm: 140159.390625, clipped: 1.0
+epoch: 0, train_batch_id: 150, avg_cost: 21959.50390625
+loss: 27965.99581603462, grad norm: 141108.015625, clipped: 1.0
+Finished epoch 0, took 00:03:57 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 21773.150945599955 +- 45.70536365424952
+Evaluating candidate model on evaluation dataset
+Epoch 0 candidate mean 21837.225085124355, baseline epoch 0 mean 30626.448957959696, difference -8789.22387283534
+p-value: 0.0
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 1, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 1...
+epoch: 1, train_batch_id: 0, avg_cost: 22787.56640625
+loss: -1599.4092720309684, grad norm: 93796.6875, clipped: 1.0
+epoch: 1, train_batch_id: 50, avg_cost: 22289.48828125
+loss: -46.981554310762704, grad norm: 87312.8984375, clipped: 1.0
+epoch: 1, train_batch_id: 100, avg_cost: 21577.8125
+loss: 1036.3744941463106, grad norm: 76212.25, clipped: 1.0
+epoch: 1, train_batch_id: 150, avg_cost: 21304.859375
+loss: 2413.19438620838, grad norm: 84879.296875, clipped: 1.0
+Finished epoch 1, took 00:03:45 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 21028.121609643356 +- 45.066612338415666
+Evaluating candidate model on evaluation dataset
+Epoch 1 candidate mean 21047.712641467355, baseline epoch 0 mean 21851.57198882608, difference -803.8593473587243
+p-value: 1.4500197130691419e-58
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 2, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 2...
+epoch: 2, train_batch_id: 0, avg_cost: 22619.9765625
+loss: -5333.287825784535, grad norm: 92474.6875, clipped: 1.0
+epoch: 2, train_batch_id: 50, avg_cost: 21233.078125
+loss: 184.59900422192538, grad norm: 83118.890625, clipped: 1.0
+epoch: 2, train_batch_id: 100, avg_cost: 20323.6796875
+loss: 1900.574218858642, grad norm: 89686.7265625, clipped: 1.0
+epoch: 2, train_batch_id: 150, avg_cost: 21411.140625
+loss: 288.50375833240474, grad norm: 88486.8984375, clipped: 1.0
+Finished epoch 2, took 00:03:44 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 20729.174638671037 +- 44.10012374499822
+Evaluating candidate model on evaluation dataset
+Epoch 2 candidate mean 20659.745519159744, baseline epoch 1 mean 20946.051905003802, difference -286.30638584405824
+p-value: 3.348857905503264e-10
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 3, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 3...
+epoch: 3, train_batch_id: 0, avg_cost: 21425.8515625
+loss: -1206.5773762517288, grad norm: 82021.8515625, clipped: 1.0
+epoch: 3, train_batch_id: 50, avg_cost: 20806.40625
+loss: 388.7454992053152, grad norm: 76116.7734375, clipped: 1.0
+epoch: 3, train_batch_id: 100, avg_cost: 19681.6953125
+loss: 2876.9425144432353, grad norm: 84248.0234375, clipped: 1.0
+epoch: 3, train_batch_id: 150, avg_cost: 23188.12890625
+loss: -5771.333387905143, grad norm: 92536.1015625, clipped: 1.0
+Finished epoch 3, took 00:03:45 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 20182.076257517954 +- 42.10078944645972
+Evaluating candidate model on evaluation dataset
+Epoch 3 candidate mean 20173.969898983516, baseline epoch 2 mean 20642.936549102502, difference -468.96665011898585
+p-value: 3.123026265189258e-28
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 4, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 4...
+epoch: 4, train_batch_id: 0, avg_cost: 19628.671875
+loss: 1314.31248090322, grad norm: 84582.1875, clipped: 1.0
+epoch: 4, train_batch_id: 50, avg_cost: 20468.3046875
+loss: -772.1028517637251, grad norm: 79129.25, clipped: 1.0
+epoch: 4, train_batch_id: 100, avg_cost: 20514.455078125
+loss: -2769.544341040521, grad norm: 83148.5390625, clipped: 1.0
+epoch: 4, train_batch_id: 150, avg_cost: 19808.33203125
+loss: -480.5051386033079, grad norm: 85829.390625, clipped: 1.0
+Finished epoch 4, took 00:03:43 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 19887.092533777122 +- 42.23315847755022
+Evaluating candidate model on evaluation dataset
+Epoch 4 candidate mean 19847.337138774004, baseline epoch 3 mean 20141.427171834366, difference -294.09003306036175
+p-value: 1.8973753277112725e-12
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 5, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 5...
+epoch: 5, train_batch_id: 0, avg_cost: 21320.1171875
+loss: -3989.2431790209102, grad norm: 77089.8203125, clipped: 1.0
+epoch: 5, train_batch_id: 50, avg_cost: 21379.912109375
+loss: -3339.644821776436, grad norm: 92269.75, clipped: 1.0
+epoch: 5, train_batch_id: 100, avg_cost: 20528.19140625
+loss: -1667.5352429429463, grad norm: 82436.5234375, clipped: 1.0
+epoch: 5, train_batch_id: 150, avg_cost: 20282.759765625
+loss: -252.95738155019822, grad norm: 90464.203125, clipped: 1.0
+Finished epoch 5, took 00:03:46 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 19802.139256793453 +- 42.96854045628597
+Evaluating candidate model on evaluation dataset
+Epoch 5 candidate mean 19752.935040052205, baseline epoch 4 mean 19861.785246158892, difference -108.85020610668653
+p-value: 0.005241899431875289
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 6, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 6...
+epoch: 6, train_batch_id: 0, avg_cost: 20711.6875
+loss: -2044.9259573198008, grad norm: 84559.078125, clipped: 1.0
+epoch: 6, train_batch_id: 50, avg_cost: 20025.314453125
+loss: -504.34824601601014, grad norm: 87226.1875, clipped: 1.0
+epoch: 6, train_batch_id: 100, avg_cost: 19754.248046875
+loss: -27.488222425448004, grad norm: 84707.9375, clipped: 1.0
+epoch: 6, train_batch_id: 150, avg_cost: 20599.40625
+loss: -2574.225657062175, grad norm: 91718.265625, clipped: 1.0
+Finished epoch 6, took 00:03:41 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 19451.291408447945 +- 39.58880481157219
+Evaluating candidate model on evaluation dataset
+Epoch 6 candidate mean 19407.092501251038, baseline epoch 5 mean 19770.530468496614, difference -363.43796724557615
+p-value: 5.005754918694706e-18
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 7, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 7...
+epoch: 7, train_batch_id: 0, avg_cost: 18606.595703125
+loss: 473.6842439332685, grad norm: 82654.0859375, clipped: 1.0
+epoch: 7, train_batch_id: 50, avg_cost: 19524.724609375
+loss: -608.972162284632, grad norm: 84949.7421875, clipped: 1.0
+epoch: 7, train_batch_id: 100, avg_cost: 19246.97265625
+loss: -424.3059505556913, grad norm: 87788.921875, clipped: 1.0
+epoch: 7, train_batch_id: 150, avg_cost: 21031.943359375
+loss: -2744.519808846844, grad norm: 79804.9765625, clipped: 1.0
+Finished epoch 7, took 00:03:39 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 19210.509280604707 +- 41.34731704635791
+Evaluating candidate model on evaluation dataset
+Epoch 7 candidate mean 19259.467159891446, baseline epoch 6 mean 19469.764282653017, difference -210.2971227615708
+p-value: 9.031266612631678e-08
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 8, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 8...
+epoch: 8, train_batch_id: 0, avg_cost: 19165.2578125
+loss: -212.37371009286758, grad norm: 85254.7578125, clipped: 1.0
+epoch: 8, train_batch_id: 50, avg_cost: 17867.08984375
+loss: 2542.368115809313, grad norm: 84651.6953125, clipped: 1.0
+epoch: 8, train_batch_id: 100, avg_cost: 19017.095703125
+loss: 82.30282690065503, grad norm: 92047.3671875, clipped: 1.0
+epoch: 8, train_batch_id: 150, avg_cost: 20241.009765625
+loss: -2486.214601790871, grad norm: 86121.9453125, clipped: 1.0
+Finished epoch 8, took 00:03:38 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 19272.137289103153 +- 40.653139595163594
+Evaluating candidate model on evaluation dataset
+Epoch 8 candidate mean 19203.57760184089, baseline epoch 7 mean 19173.440424928092, difference 30.137176912798168
+Start train epoch 9, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 9...
+epoch: 9, train_batch_id: 0, avg_cost: 20476.24609375
+loss: -3334.853181873096, grad norm: 90813.125, clipped: 1.0
+epoch: 9, train_batch_id: 50, avg_cost: 19609.8046875
+loss: -1070.7407146432806, grad norm: 86816.46875, clipped: 1.0
+epoch: 9, train_batch_id: 100, avg_cost: 20137.69140625
+loss: -814.4095665223638, grad norm: 87845.5859375, clipped: 1.0
+epoch: 9, train_batch_id: 150, avg_cost: 20387.478515625
+loss: -2494.9075003825174, grad norm: 85819.53125, clipped: 1.0
+Finished epoch 9, took 00:03:39 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 19094.043318468805 +- 42.06095508201217
+Evaluating candidate model on evaluation dataset
+Epoch 9 candidate mean 19016.1438652847, baseline epoch 7 mean 19173.440424928092, difference -157.29655964339327
+p-value: 0.00010559530231968222
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 10, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 10...
+epoch: 10, train_batch_id: 0, avg_cost: 19568.203125
+loss: -1180.171366296987, grad norm: 78797.0234375, clipped: 1.0
+epoch: 10, train_batch_id: 50, avg_cost: 18760.369140625
+loss: -357.9228397632751, grad norm: 77012.890625, clipped: 1.0
+epoch: 10, train_batch_id: 100, avg_cost: 17018.828125
+loss: 2108.572088221754, grad norm: 79298.0234375, clipped: 1.0
+epoch: 10, train_batch_id: 150, avg_cost: 20922.8203125
+loss: -3216.086767658322, grad norm: 84996.7265625, clipped: 1.0
+Finished epoch 10, took 00:03:41 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 18787.665570171557 +- 43.14672130583393
+Evaluating candidate model on evaluation dataset
+Epoch 10 candidate mean 18713.436595281502, baseline epoch 9 mean 19024.616232027456, difference -311.17963674595376
+p-value: 1.733173691258143e-13
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 11, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 11...
+epoch: 11, train_batch_id: 0, avg_cost: 19706.1953125
+loss: -1236.158969625208, grad norm: 87390.25, clipped: 1.0
+epoch: 11, train_batch_id: 50, avg_cost: 20847.015625
+loss: -2690.24551827868, grad norm: 82913.7890625, clipped: 1.0
+epoch: 11, train_batch_id: 100, avg_cost: 19026.73046875
+loss: -417.2970636899114, grad norm: 80159.203125, clipped: 1.0
+epoch: 11, train_batch_id: 150, avg_cost: 19570.98828125
+loss: -522.4292475101636, grad norm: 71706.421875, clipped: 1.0
+Finished epoch 11, took 00:03:41 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 18867.48701107859 +- 41.31586383588195
+Evaluating candidate model on evaluation dataset
+Epoch 11 candidate mean 18888.051639091398, baseline epoch 10 mean 18861.508730182464, difference 26.542908908933896
+Start train epoch 12, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 12...
+epoch: 12, train_batch_id: 0, avg_cost: 20612.126953125
+loss: -1617.7894528587535, grad norm: 88032.625, clipped: 1.0
+epoch: 12, train_batch_id: 50, avg_cost: 19062.80078125
+loss: 131.57298399296292, grad norm: 81077.734375, clipped: 1.0
+epoch: 12, train_batch_id: 100, avg_cost: 19422.173828125
+loss: -666.8346006387036, grad norm: 76947.296875, clipped: 1.0
+epoch: 12, train_batch_id: 150, avg_cost: 19145.681640625
+loss: -1023.3455215077204, grad norm: 77396.609375, clipped: 1.0
+Finished epoch 12, took 00:03:37 s
+####Saving model and state...
+调用validate
+Validating...
+Validation overall avg_cost: 18575.791519379636 +- 39.695837653056145
+Evaluating candidate model on evaluation dataset
+Epoch 12 candidate mean 18601.880055829955, baseline epoch 10 mean 18861.508730182464, difference -259.6286743525088
+p-value: 4.00345876277101e-09
+Update baseline
+Evaluating baseline model on evaluation dataset
+
+Start train epoch 13, lr=0.0001 for run train_weadd_100_20260302T144822
+Evaluating baseline on dataset...
+开始train_epoch正式训练，总的 batch 大小: 200
+Start training epoch 13...
+epoch: 13, train_batch_id: 0, avg_cost: 18931.35546875
+loss: -858.340686974847, grad norm: 71918.0546875, clipped: 1.0
