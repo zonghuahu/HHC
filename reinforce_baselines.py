@@ -263,6 +263,88 @@ class RolloutBaseline(Baseline):
             v, _ = self.model(x)
         return v, 0
 
+    def eval_agh(self, x, fleet_info, distance, lambda_vector, opts):
+        """
+        Recompute baseline greedy costs using the SAME lambda_vector as the policy.
+        Returns a list of per-fleet scalarized costs (one tensor per fleet).
+        """
+        from nets.attention_model import set_decode_type
+        from utils import move_to
+
+        set_decode_type(self.model, "greedy")
+        self.model.eval()
+
+        bs = x['loc'].size(0)
+        bat_tw_left = x['arrival'].repeat(len(fleet_info['next_duration']) + 1, 1, 1)
+        bat_tw_right = x['departure']
+        need = x['need']
+        bl_cost_list = []
+
+        for f in fleet_info['order']:
+            next_duration = torch.tensor(
+                fleet_info['next_duration'][fleet_info['precedence'][f]],
+                device=x['type'].device
+            ).repeat(bs, 1)
+            tw_right = bat_tw_right - torch.gather(next_duration, 1, x['type'])
+            tw_right = torch.cat((torch.full_like(tw_right[:, :1], 1441), tw_right), dim=1)
+
+            tw_left = bat_tw_left[fleet_info['precedence'][f]]
+            tw_left = torch.cat((torch.zeros_like(tw_left[:, :1]), tw_left), dim=1)
+            duration = torch.tensor(
+                fleet_info['duration'][f], device=x['type'].device
+            ).repeat(bs, 1)
+
+            if f == 1:
+                fmask = (need == 1) | (need == 9)
+            elif f == 2:
+                fmask = (need == 2) | (need == 7)
+            elif f == 3:
+                fmask = (need == 3) | (need == 7)
+            elif f == 4:
+                fmask = (need == 4) | (need == 8)
+            elif f == 5:
+                fmask = (need == 5) | (need == 8)
+            elif f == 6:
+                fmask = (need == 6) | (need == 9)
+            else:
+                fmask = (need == f)
+
+            tw_right_filtered = tw_right.clone()
+            tw_right_filtered[:, 1:] = tw_right[:, 1:] * fmask.float()
+            tw_left_filtered = tw_left.clone()
+            tw_left_filtered[:, 1:] = tw_left[:, 1:] * fmask.float()
+            need_filtered = need.clone() * fmask.type_as(need).float()
+
+            fleet_bat = {
+                'loc': x['loc'],
+                'distance': distance.expand(bs, len(distance)),
+                'duration': torch.gather(duration, 1, x['type']),
+                'tw_right': tw_right_filtered,
+                'tw_left': tw_left_filtered,
+                'fleet': torch.full((bs, 1), f - 1),
+                'need': need_filtered,
+            }
+
+            if hasattr(self.model, 'rnn_time') and self.model.rnn_time:
+                self.model.pre_tw = None
+
+            with torch.no_grad():
+                f1, f2, _, serve_time = self.model(
+                    move_to(fleet_bat, opts.device),
+                    lambda_vector=lambda_vector
+                )
+            bl_fleet_cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
+            bl_cost_list.append(bl_fleet_cost.detach())
+
+            next_stage = fleet_info['precedence'][f] + 1
+            fmask = fmask.to(opts.device)
+            if f == 1:
+                bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:], bat_tw_left[next_stage])
+            else:
+                bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
+
+        return bl_cost_list
+
     def epoch_callback(self, model, epoch):
         print("Evaluating candidate model on evaluation dataset")
         candidate_vals = rollout(model, self.dataset, self.opts).cpu().numpy()

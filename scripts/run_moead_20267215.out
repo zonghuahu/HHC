@@ -1,0 +1,267 @@
+=== MOEA/D n=50 (shared_test_50.pkl, 1000 instances) ===
+Loading instances from paretofront/shared_test_50.pkl
+MOEA/D: 11 weight vectors, n_gen=500, T=3
+Evaluating on 1000 instances
+  Instance 1/1000
+  Instance 10/1000
+  Instance 20/1000
+  Instance 30/1000
+  Instance 40/1000
+  Instance 50/1000
+  Instance 60/1000
+  Instance 70/1000
+  Instance 80/1000
+  Instance 90/1000
+  Instance 100/1000
+  Instance 110/1000
+  Instance 120/1000
+  Instance 130/1000
+  Instance 140/1000
+  Instance 150/1000
+  Instance 160/1000
+  Instance 170/1000
+  Instance 180/1000
+  Instance 190/1000
+  Instance 200/1000
+  Instance 210/1000
+  Instance 220/1000
+  Instance 230/1000
+  Instance 240/1000
+  Instance 250/1000
+  Instance 260/1000
+  Instance 270/1000
+  Instance 280/1000
+  Instance 290/1000
+  Instance 300/1000
+  Instance 310/1000
+  Instance 320/1000
+  Instance 330/1000
+  Instance 340/1000
+  Instance 350/1000
+  Instance 360/1000
+  Instance 370/1000
+  Instance 380/1000
+  Instance 390/1000
+  Instance 400/1000
+  Instance 410/1000
+  Instance 420/1000
+  Instance 430/1000
+  Instance 440/1000
+  Instance 450/1000
+  Instance 460/1000
+  Instance 470/1000
+  Instance 480/1000
+  Instance 490/1000
+  Instance 500/1000
+  Instance 510/1000
+  Instance 520/1000
+  Instance 530/1000
+  Instance 540/1000
+  Instance 550/1000
+  Instance 560/1000
+  Instance 570/1000
+  Instance 580/1000
+  Instance 590/1000
+  Instance 600/1000
+  Instance 610/1000
+  Instance 620/1000
+  Instance 630/1000
+  Instance 640/1000
+  Instance 650/1000
+  Instance 660/1000
+  Instance 670/1000
+  Instance 680/1000
+  Instance 690/1000
+  Instance 700/1000
+  Instance 710/1000
+  Instance 720/1000
+  Instance 730/1000
+  Instance 740/1000
+  Instance 750/1000
+  Instance 760/1000
+  Instance 770/1000
+  Instance 780/1000
+  Instance 790/1000
+  Instance 800/1000
+  Instance 810/1000
+  Instance 820/1000
+  Instance 830/1000
+  Instance 840/1000
+  Instance 850/1000
+  Instance 860/1000
+  Instance 870/1000
+  Instance 880/1000
+  Instance 890/1000
+  Instance 900/1000
+  Instance 910/1000
+  Instance 920/1000
+  Instance 930/1000
+  Instance 940/1000
+  Instance 950/1000
+  Instance 960/1000
+  Instance 970/1000
+  Instance 980/1000
+  Instance 990/1000
+  Instance 1000/1000
+
+======================================================================
+  MOEA/D Results | n=50 | 1000 instances | 2301.3s
+        λ₁    λ₂       f₁ (Distance)        f₂ (Waiting)
+----------------------------------------------------------------------
+    0.0    1.0   2990.60 ± 279.29        0.12 ± 1.77    
+    0.1    0.9   2859.28 ± 218.90       12.83 ± 9.71    
+    0.2    0.8   2811.91 ± 210.23       24.34 ± 13.63   
+    0.3    0.7   2784.36 ± 207.88       33.29 ± 17.39   
+    0.4    0.6   2764.68 ± 205.62       42.27 ± 21.52   
+    0.5    0.5   2749.81 ± 203.89       50.01 ± 25.39   
+    0.6    0.4   2737.87 ± 203.52       57.86 ± 29.98   
+    0.7    0.3   2726.49 ± 203.23       67.83 ± 35.83   
+    0.8    0.2   2717.15 ± 202.62       81.88 ± 45.29   
+    0.9    0.1   2709.00 ± 203.37      100.38 ± 55.40   
+    1.0    0.0   2704.96 ± 203.40      123.44 ± 71.27   
+======================================================================
+
+Hypervolume Indicator: 70483.33
+Reference point: f₁=3289.66, f₂=135.79
+
+Results saved to paretofront/moead_results_50_exp1.pkl
+Text results saved to paretofront/moead_results_50_exp1.txt
+
+============================================================
+MOEA/D completed. Total runtime: 0h 38m 21s (2301.3s)
+============================================================
+
+=== MOEA/D n=100 (shared_test_100.pkl, 1000 instances) ===
+Loading instances from paretofront/shared_test_100.pkl
+MOEA/D: 11 weight vectors, n_gen=500, T=3
+Evaluating on 1000 instances
+  Instance 1/1000
+  Instance 10/1000
+  Instance 20/1000
+  Instance 30/1000
+  Instance 40/1000
+  Instance 50/1000
+  Instance 60/1000
+  Instance 70/1000
+  Instance 80/1000
+  Instance 90/1000
+  Instance 100/1000
+  Instance 110/1000
+  Instance 120/1000
+  Instance 130/1000
+  Instance 140/1000
+  Instance 150/1000
+  Instance 160/1000
+  Instance 170/1000
+  Instance 180/1000
+  Instance 190/1000
+  Instance 200/1000
+  Instance 210/1000
+  Instance 220/1000
+  Instance 230/1000
+  Instance 240/1000
+  Instance 250/1000
+  Instance 260/1000
+  Instance 270/1000
+  Instance 280/1000
+  Instance 290/1000
+  Instance 300/1000
+  Instance 310/1000
+  Instance 320/1000
+  Instance 330/1000
+  Instance 340/1000
+  Instance 350/1000
+  Instance 360/1000
+  Instance 370/1000
+  Instance 380/1000
+  Instance 390/1000
+  Instance 400/1000
+  Instance 410/1000
+  Instance 420/1000
+  Instance 430/1000
+  Instance 440/1000
+  Instance 450/1000
+  Instance 460/1000
+  Instance 470/1000
+  Instance 480/1000
+  Instance 490/1000
+  Instance 500/1000
+  Instance 510/1000
+  Instance 520/1000
+  Instance 530/1000
+  Instance 540/1000
+  Instance 550/1000
+  Instance 560/1000
+  Instance 570/1000
+  Instance 580/1000
+  Instance 590/1000
+  Instance 600/1000
+  Instance 610/1000
+  Instance 620/1000
+  Instance 630/1000
+  Instance 640/1000
+  Instance 650/1000
+  Instance 660/1000
+  Instance 670/1000
+  Instance 680/1000
+  Instance 690/1000
+  Instance 700/1000
+  Instance 710/1000
+  Instance 720/1000
+  Instance 730/1000
+  Instance 740/1000
+  Instance 750/1000
+  Instance 760/1000
+  Instance 770/1000
+  Instance 780/1000
+  Instance 790/1000
+  Instance 800/1000
+  Instance 810/1000
+  Instance 820/1000
+  Instance 830/1000
+  Instance 840/1000
+  Instance 850/1000
+  Instance 860/1000
+  Instance 870/1000
+  Instance 880/1000
+  Instance 890/1000
+  Instance 900/1000
+  Instance 910/1000
+  Instance 920/1000
+  Instance 930/1000
+  Instance 940/1000
+  Instance 950/1000
+  Instance 960/1000
+  Instance 970/1000
+  Instance 980/1000
+  Instance 990/1000
+  Instance 1000/1000
+
+======================================================================
+  MOEA/D Results | n=100 | 1000 instances | 4037.5s
+        λ₁    λ₂       f₁ (Distance)        f₂ (Waiting)
+----------------------------------------------------------------------
+    0.0    1.0   6383.77 ± 574.69        4.14 ± 7.57    
+    0.1    0.9   5744.09 ± 362.26       40.50 ± 19.44   
+    0.2    0.8   5625.81 ± 342.81       60.45 ± 26.70   
+    0.3    0.7   5560.42 ± 336.10       76.26 ± 32.57   
+    0.4    0.6   5513.59 ± 330.78       91.42 ± 38.12   
+    0.5    0.5   5482.38 ± 327.32      104.20 ± 45.26   
+    0.6    0.4   5458.81 ± 325.58      116.95 ± 52.96   
+    0.7    0.3   5432.82 ± 323.56      134.90 ± 64.08   
+    0.8    0.2   5414.73 ± 323.10      156.43 ± 75.87   
+    0.9    0.1   5400.14 ± 322.33      185.30 ± 94.37   
+    1.0    0.0   5392.56 ± 322.71      216.19 ± 118.53  
+======================================================================
+
+Hypervolume Indicator: 325868.38
+Reference point: f₁=7022.14, f₂=237.81
+
+Results saved to paretofront/moead_results_100_exp1.pkl
+Text results saved to paretofront/moead_results_100_exp1.txt
+
+============================================================
+MOEA/D completed. Total runtime: 1h 07m 17s (4037.5s)
+============================================================
+
+=== Done. Outputs: paretofront/moead_results_{50,100}_exp1.pkl ===

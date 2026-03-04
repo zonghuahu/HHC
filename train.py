@@ -222,16 +222,13 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
 
 def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb_logger, opts):
     """训练 AGH 批次：多目标 REINFORCE，每 batch 采样一个 lambda 权重向量。"""
-    x, bl_val = baseline.unwrap_batch(batch)
-    assert bl_val is not None
+    x, _ = baseline.unwrap_batch(batch)
     x = move_to(x, opts.device)
-    bl_val = move_to(bl_val, opts.device)
 
     set_decode_type(model, "sampling")
 
     bs = x['loc'].size(0)
 
-    # 采样 lambda 权重向量: lambda ~ Dirichlet(1, 1) => Uniform on simplex
     lam = torch.rand(bs, 1, device=opts.device)
     lambda_vector = torch.cat([lam, 1 - lam], dim=1)  # [batch_size, 2]
 
@@ -293,7 +290,6 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
 
         f1, f2, log_likelihood, serve_time = model(move_to(fleet_bat, opts.device), lambda_vector=lambda_vector)
 
-        # 标量化成本 = λ₁·f₁ + λ₂·f₂
         fleet_cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
 
         fleet_cost_list.append(fleet_cost)
@@ -310,10 +306,15 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
         else:
             bat_tw_left[next_stage] = torch.where(fmask, serve_time[:, 1:] + 10, bat_tw_left[next_stage])
 
-    # REINFORCE loss: 每个 fleet 的 (cost - baseline) * log_likelihood
-    loss = ((fleet_cost_list[0] - bl_val[:, 0]) * log_likelihood_list[0]).mean()
+    # Baseline: greedy rollout with the SAME lambda_vector
+    bl_cost_list = baseline.eval_agh(x, model.fleet_info, model.distance, lambda_vector, opts)
+
+    model.train()
+    set_decode_type(model, "sampling")
+
+    loss = ((fleet_cost_list[0] - bl_cost_list[0]) * log_likelihood_list[0]).mean()
     for i in range(1, len(fleet_cost_list)):
-        loss += ((fleet_cost_list[i] - bl_val[:, i]) * log_likelihood_list[i]).mean()
+        loss += ((fleet_cost_list[i] - bl_cost_list[i]) * log_likelihood_list[i]).mean()
     loss = loss / len(fleet_cost_list)
 
     optimizer.zero_grad()

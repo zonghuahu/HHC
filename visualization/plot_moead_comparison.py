@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Plot Pareto front comparison: MOEA/D vs DRL baseline.
-Overlays both fronts for visual comparison.
+Plot Pareto front comparison: MOEA/D vs DRL.
+Clean curves only, no bands, no labels.
 """
 import os
 import pickle
@@ -13,50 +13,56 @@ import numpy as np
 
 
 def load_results(filepath):
-    """Load Pareto results from pickle file."""
     with open(filepath, 'rb') as f:
         return pickle.load(f)
 
 
 def plot_comparison(drl_path, moead_path, graph_size, output_dir='paretofront'):
-    """Plot DRL vs MOEA/D Pareto fronts."""
     drl_results = load_results(drl_path)
     moead_results = load_results(moead_path)
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    try:
+        plt.style.use('seaborn-v0_8-whitegrid')
+    except OSError:
+        try:
+            plt.style.use('seaborn-whitegrid')
+        except OSError:
+            pass
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
 
-    # DRL
-    drl_f1 = [r['f1_mean'] for r in drl_results]
-    drl_f2 = [r['f2_mean'] for r in drl_results]
-    ax.plot(drl_f1, drl_f2, 'o-', color='#2196F3', markersize=8,
-            linewidth=2, label='DRL (Ours)', zorder=3)
+    # DRL: mean line only, solid, no markers
+    drl_f1 = np.array([r['f1_mean'] for r in drl_results])
+    drl_f2 = np.array([r['f2_mean'] for r in drl_results])
+    sort_idx = np.argsort(drl_f1)
+    ax.plot(drl_f1[sort_idx], drl_f2[sort_idx], '-', color='#4A90D9',
+            linewidth=2.0, label='DRL (Ours)', zorder=3)
 
-    # MOEA/D
-    moead_f1 = [r['f1_mean'] for r in moead_results]
-    moead_f2 = [r['f2_mean'] for r in moead_results]
-    ax.plot(moead_f1, moead_f2, 's--', color='#FF5722', markersize=8,
-            linewidth=2, label='MOEA/D', zorder=3)
+    # MOEA/D: dashed, square markers, markevery=3, markersize=5
+    moead_f1 = np.array([r['f1_mean'] for r in moead_results])
+    moead_f2 = np.array([r['f2_mean'] for r in moead_results])
+    sort_m = np.argsort(moead_f1)
+    ax.plot(moead_f1[sort_m], moead_f2[sort_m], 's--', color='#D94A4A',
+            markersize=5, linewidth=1.8, markevery=3, label='MOEA/D', zorder=3)
 
-    # Add lambda labels
-    for r in drl_results:
-        l1 = r['lambda'][0]
-        ax.annotate(f'λ₁={l1:.1f}', (r['f1_mean'], r['f2_mean']),
-                    textcoords="offset points", xytext=(5, 8),
-                    fontsize=7, color='#2196F3', alpha=0.7)
+    ax.set_xlabel(r'$f_1$: Total Travel Distance', fontsize=11)
+    ax.set_ylabel(r'$f_2$: Total Patient Waiting Time', fontsize=11)
+    ax.set_title(f'Pareto Front Comparison — HHCRSP n={graph_size}',
+                fontsize=13, fontweight='bold')
 
-    ax.set_xlabel('f₁: Total Distance', fontsize=13)
-    ax.set_ylabel('f₂: Total Waiting Time', fontsize=13)
-    ax.set_title(f'Pareto Front Comparison — HHCRSP{graph_size}',
-                 fontsize=15, fontweight='bold')
-    ax.legend(fontsize=12, loc='best')
-    ax.grid(True, alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.grid(True, linestyle=':', alpha=0.2)
+    ax.legend(loc='upper right', fontsize=9, framealpha=0.8,
+              edgecolor='lightgray')
 
-    plt.tight_layout()
+    plt.tight_layout(pad=1.0)
     os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir,
-                            f'moead_vs_drl_{graph_size}.png')
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
-    print(f"Plot saved to {out_path}")
+    base = os.path.join(output_dir, f'moead_vs_drl_{graph_size}')
+    for ext in ('png', 'pdf'):
+        out_path = base + '.' + ext
+        plt.savefig(out_path, dpi=200 if ext == 'png' else None,
+                    bbox_inches='tight')
+        print(f"Plot saved to {out_path}")
     plt.close()
 
 

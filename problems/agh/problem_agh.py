@@ -40,7 +40,7 @@ class AGH(object):
         for i in range(pi.size(1)):
             arrival_time = cur_time + time_distance[:, i:i+1]
             tw_left_i = dataset['tw_left'][ids, pi[:, i:i+1]]
-            wait_i = torch.clamp(tw_left_i - arrival_time, min=0) * (pi[:, i:i+1] != 0).float()
+            wait_i = torch.clamp(arrival_time - tw_left_i, min=0) * (pi[:, i:i+1] != 0).float()
             total_wait += wait_i.squeeze(1)
 
             cur_time = (torch.max(arrival_time, tw_left_i)

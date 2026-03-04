@@ -1,22 +1,0 @@
-=== DRL Pareto Inference (200ep models) on shared test data ===
-[n=50] Using outputs/agh_50/train_raw_50_200ep_20260228T162007/epoch-199.pt
-调用AttentionModel
-Model loaded from outputs/agh_50/train_raw_50_200ep_20260228T162007/epoch-199.pt
-Dataset: 1000 instances from paretofront/shared_test_50.pkl (shared with convergence plot)
-
-Running inference with 101 weight vectors...
-Weight vectors:   0%|          | 0/101 [00:00<?, ?it/s]  λ=[0.0, 1.0] → f₁=3760.82 ± 303.82, f₂=2.96 ± 11.16
-Weight vectors:   1%|          | 1/101 [00:05<09:57,  5.98s/it]  λ=[0.01, 0.99] → f₁=3732.89 ± 301.57, f₂=3.52 ± 12.18
-Weight vectors:   2%|▏         | 2/101 [00:11<09:17,  5.63s/it]  λ=[0.02, 0.98] → f₁=3702.17 ± 297.59, f₂=4.23 ± 13.23
-Weight vectors:   3%|▎         | 3/101 [00:16<08:58,  5.50s/it]  λ=[0.03, 0.97] → f₁=3672.67 ± 297.96, f₂=4.67 ± 14.05
-Weight vectors:   4%|▍         | 4/101 [00:22<08:46,  5.42s/it]  λ=[0.04, 0.96] → f₁=3642.85 ± 296.11, f₂=5.21 ± 14.44
-Weight vectors:   5%|▍         | 5/101 [00:27<08:35,  5.37s/it]  λ=[0.05, 0.95] → f₁=3610.97 ± 292.51, f₂=5.99 ± 15.77
-Weight vectors:   6%|▌         | 6/101 [00:32<08:26,  5.33s/it]  λ=[0.06, 0.94] → f₁=3580.59 ± 289.01, f₂=6.66 ± 16.79
-Weight vectors:   7%|▋         | 7/101 [00:37<08:18,  5.30s/it]  λ=[0.07, 0.93] → f₁=3547.16 ± 284.70, f₂=7.45 ± 17.35
-Weight vectors:   8%|▊         | 8/101 [00:43<08:10,  5.28s/it]  λ=[0.08, 0.92] → f₁=3514.28 ± 284.59, f₂=8.75 ± 19.23
-Weight vectors:   9%|▉         | 9/101 [00:48<08:03,  5.25s/it]  λ=[0.09, 0.91] → f₁=3479.94 ± 278.32, f₂=9.88 ± 20.30
-Weight vectors:  10%|▉         | 10/101 [00:53<07:55,  5.22s/it]  λ=[0.1, 0.9] → f₁=3435.55 ± 273.59, f₂=11.66 ± 21.47
-Weight vectors:  11%|█         | 11/101 [00:58<07:46,  5.19s/it]  λ=[0.11, 0.89] → f₁=3390.61 ± 269.34, f₂=13.53 ± 23.22
-Weight vectors:  12%|█▏        | 12/101 [01:03<07:39,  5.16s/it]  λ=[0.12, 0.88] → f₁=3345.03 ± 261.85, f₂=15.72 ± 24.42
-Weight vectors:  13%|█▎        | 13/101 [01:08<07:31,  5.13s/it]  λ=[0.13, 0.87] → f₁=3298.70 ± 257.70, f₂=18.29 ± 25.73
-Weight vectors:  14%|█▍        | 14/101 [01:13<07:23,  5.10s/it][2026-03-01T11:01:46.862] error: *** JOB 20200053 ON gcn30 CANCELLED AT 2026-03-01T11:01:46 DUE to SIGNAL Terminated ***
