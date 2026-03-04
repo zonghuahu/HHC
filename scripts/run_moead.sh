@@ -13,7 +13,7 @@ python -u moead.py \
     --graph_size 50 \
     --filename paretofront/shared_test_50.pkl \
     --n_instances 1000 \
-    --n_weights 11 \
+    --n_weights 101 \
     --n_gen 500 \
     --seed 1234 \
     --output_dir paretofront
@@ -24,7 +24,7 @@ python -u moead.py \
     --graph_size 100 \
     --filename paretofront/shared_test_100.pkl \
     --n_instances 1000 \
-    --n_weights 11 \
+    --n_weights 101 \
     --n_gen 500 \
     --seed 1234 \
     --output_dir paretofront

@@ -1,0 +1,31 @@
+=== Step 1: DRL Pareto Inference n=100 ===
+Device: cuda
+Loading model from outputs/agh_100/train_weadd_100_20260303T002036/epoch-199.pt ...
+调用AttentionModel
+  [*] Loading model from outputs/agh_100/train_weadd_100_20260303T002036/epoch-199.pt
+Dataset: 1000 instances, n=100
+Sweeping 101 lambda values ...
+  [1/101] λ=(0.00,1.00) f1=5298.8±284.8  f2=3.6±7.9
+  [11/101] λ=(0.10,0.90) f1=4919.3±260.5  f2=20.4±19.1
+  [21/101] λ=(0.20,0.80) f1=4673.8±244.9  f2=57.7±34.4
+  [31/101] λ=(0.30,0.70) f1=4513.8±234.1  f2=105.9±51.0
+  [41/101] λ=(0.40,0.60) f1=4415.0±234.0  f2=156.8±66.8
+  [51/101] λ=(0.50,0.50) f1=4345.5±230.2  f2=211.6±81.9
+  [61/101] λ=(0.60,0.40) f1=4297.9±229.9  f2=272.1±101.5
+  [71/101] λ=(0.70,0.30) f1=4264.6±229.6  f2=335.8±116.3
+  [81/101] λ=(0.80,0.20) f1=4245.4±233.5  f2=403.6±134.2
+  [91/101] λ=(0.90,0.10) f1=4234.3±229.7  f2=461.9±148.0
+  [101/101] λ=(1.00,0.00) f1=4229.5±230.8  f2=517.5±159.7
+[OK] Results saved to: paretofront/pareto_results_100_weadd101.pkl
+[OK] Text results saved to: paretofront/pareto_results_100_weadd101.txt
+[OK] Pareto front plot saved to: paretofront/pareto_front_100_weadd101.png
+
+=== Step 2: Pareto Comparison n=50 ===
+Plot saved to paretofront/moead_vs_drl_50.png
+Plot saved to paretofront/moead_vs_drl_50.pdf
+
+=== Step 3: Pareto Comparison n=100 ===
+Plot saved to paretofront/moead_vs_drl_100.png
+Plot saved to paretofront/moead_vs_drl_100.pdf
+
+=== Done ===
