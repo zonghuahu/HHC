@@ -45,6 +45,7 @@ def rollout(model, dataset, opts, lambda_vector=None):
             need = bat['need']
             bs = bat['loc'].size(0)
 
+            # Note: validation uses Tchebycheff scalarization with equal preference λ=[0.5, 0.5]
             if lambda_vector is None:
                 lv = torch.tensor([[0.5, 0.5]], device=opts.device).expand(bs, -1)
             else:
@@ -104,7 +105,7 @@ def rollout(model, dataset, opts, lambda_vector=None):
 
                 with torch.no_grad():
                     f1, f2, _, serve_time = model(move_to(fleet_bat, opts.device), lambda_vector=lv)
-                scalarized_cost = lv[:, 0] * f1 + lv[:, 1] * f2
+                scalarized_cost = torch.max(lv[:, 0] * f1, lv[:, 1] * f2)
                 bat_cost.append(scalarized_cost.data.cpu().view(-1, 1))
 
                 next_stage = model.fleet_info['precedence'][f] + 1
@@ -290,7 +291,7 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
 
         f1, f2, log_likelihood, serve_time = model(move_to(fleet_bat, opts.device), lambda_vector=lambda_vector)
 
-        fleet_cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
+        fleet_cost = torch.max(lambda_vector[:, 0] * f1, lambda_vector[:, 1] * f2)
 
         fleet_cost_list.append(fleet_cost)
         log_likelihood_list.append(log_likelihood)
@@ -322,7 +323,7 @@ def train_batch_agh(model, optimizer, baseline, epoch, batch_id, step, batch, tb
     grad_norms = clip_grad_norms(optimizer.param_groups, opts.max_grad_norm)
     optimizer.step()
 
-    fleet_cost_together = lambda_vector[:, 0] * total_f1 + lambda_vector[:, 1] * total_f2
+    fleet_cost_together = torch.max(lambda_vector[:, 0] * total_f1, lambda_vector[:, 1] * total_f2)
     if step % int(opts.log_step) == 0:
         log_values(fleet_cost_together, grad_norms, epoch, batch_id, step, log_likelihood_together, loss, 0, tb_logger, opts)
 

@@ -17,7 +17,7 @@ def load_results(filepath):
         return pickle.load(f)
 
 
-def plot_comparison(drl_path, moead_path, graph_size, output_dir='paretofront'):
+def plot_comparison(drl_path, moead_path, graph_size, output_dir='paretofront', output_prefix='moead_vs_drl'):
     drl_results = load_results(drl_path)
     moead_results = load_results(moead_path)
 
@@ -57,7 +57,7 @@ def plot_comparison(drl_path, moead_path, graph_size, output_dir='paretofront'):
 
     plt.tight_layout(pad=1.0)
     os.makedirs(output_dir, exist_ok=True)
-    base = os.path.join(output_dir, f'moead_vs_drl_{graph_size}')
+    base = os.path.join(output_dir, f'{output_prefix}_{graph_size}')
     for ext in ('png', 'pdf'):
         out_path = base + '.' + ext
         plt.savefig(out_path, dpi=200 if ext == 'png' else None,
@@ -74,6 +74,8 @@ if __name__ == '__main__':
     parser.add_argument('--moead_path', type=str, default=None,
                         help='Path to MOEA/D pareto results .pkl')
     parser.add_argument('--output_dir', type=str, default='paretofront')
+    parser.add_argument('--output_prefix', type=str, default='moead_vs_drl',
+                        help='Output filename prefix (e.g. tche_moead_vs_drl)')
     opts = parser.parse_args()
 
     if opts.drl_path is None:
@@ -82,4 +84,4 @@ if __name__ == '__main__':
         opts.moead_path = f'paretofront/moead_results_{opts.graph_size}_exp1.pkl'
 
     plot_comparison(opts.drl_path, opts.moead_path, opts.graph_size,
-                    opts.output_dir)
+                    opts.output_dir, opts.output_prefix)

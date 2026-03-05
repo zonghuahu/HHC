@@ -1,0 +1,6 @@
+# 训练输出和模型
+outputs/
+*.pt
+__pycache__/
+*.pyc
+

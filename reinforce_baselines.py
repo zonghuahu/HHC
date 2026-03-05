@@ -333,7 +333,7 @@ class RolloutBaseline(Baseline):
                     move_to(fleet_bat, opts.device),
                     lambda_vector=lambda_vector
                 )
-            bl_fleet_cost = lambda_vector[:, 0] * f1 + lambda_vector[:, 1] * f2
+            bl_fleet_cost = torch.max(lambda_vector[:, 0] * f1, lambda_vector[:, 1] * f2)
             bl_cost_list.append(bl_fleet_cost.detach())
 
             next_stage = fleet_info['precedence'][f] + 1
